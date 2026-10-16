@@ -1,0 +1,1592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contador de calorías</title>
+<style>
+  :root {
+    --fondo: #171a21;
+    --panel: #1f242d;
+    --borde: #313845;
+    --texto: #e4e7ec;
+    --suave: #8d96a5;
+    --acento: #7aa2d6;
+    --alerta: #d6a35c;
+    --ok: #6fb58a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px;
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: "Segoe UI", Arial, sans-serif;
+    line-height: 1.4;
+  }
+  .contenedor { max-width: 860px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 600; }
+  h2 { margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  .sub { margin: 0 0 20px; color: var(--suave); font-size: 14px; }
+  .tarjeta {
+    background: var(--panel);
+    border: 1px solid var(--borde);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  input, button, select {
+    font: inherit;
+    color: var(--texto);
+    background: var(--fondo);
+    border: 1px solid var(--borde);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  input:focus, button:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--acento); }
+  button.principal { background: var(--acento); border-color: var(--acento); color: #101722; font-weight: 600; }
+  .fila { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .fila .crece { flex: 1; min-width: 180px; }
+  .fila .gramos { width: 110px; }
+  .metas, .resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .metas label { font-size: 13px; color: var(--suave); }
+  .metas input { width: 100%; margin-top: 4px; }
+  .dato { background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; padding: 12px; }
+  .dato .nombre { font-size: 13px; color: var(--suave); }
+  .dato .valor { font-size: 22px; font-weight: 600; }
+  .dato .valor small { font-size: 13px; font-weight: 400; color: var(--suave); }
+  .dato .estado { font-size: 12px; color: var(--suave); }
+  .barra { height: 10px; background: var(--borde); border-radius: 5px; margin: 8px 0 6px; overflow: hidden; }
+  .barra div { height: 100%; width: 0; background: var(--acento); border-radius: 5px; transition: width 0.3s; }
+  .barra div.casi { background: var(--ok); }
+  .barra div.pasado { background: var(--alerta); }
+  .porcentaje { font-size: 13px; font-weight: 600; color: var(--texto); }
+  .form-alimento { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .form-alimento label { display: block; font-size: 13px; color: var(--suave); }
+  .form-alimento input { width: 100%; margin-top: 4px; }
+  .tabla-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--borde); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  th { color: var(--suave); font-weight: 500; font-size: 13px; }
+  tr.total td { font-weight: 600; border-bottom: none; }
+  .borrar { padding: 2px 8px; color: var(--suave); }
+  .vacio { color: var(--suave); font-size: 14px; margin: 0; }
+  .plato { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--borde); font-size: 14px; }
+  .plato:last-child { border-bottom: none; }
+  .plato span { color: var(--suave); }
+  .nota { font-size: 12px; color: var(--suave); margin-top: 8px; }
+  .mini { width: 80px; padding: 4px 6px; text-align: right; }
+
+  select { font: inherit; color: var(--texto); background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; padding: 8px 10px; }
+  select:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+  .metas label { display: block; }
+  .metas select { width: 100%; margin-top: 4px; }
+  h3 { margin: 16px 0 4px; font-size: 15px; font-weight: 600; color: var(--acento); }
+  .mini { width: 80px; padding: 4px 6px; text-align: right; }
+  .chip { display: inline-flex; gap: 2px; }
+  .pestanas button.activo { border-color: var(--acento); color: var(--acento); }
+
+  /* Guía a pantalla completa */
+  .guia {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10;
+    display: flex;
+    background: var(--fondo);
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .guia-contenido { margin: auto; width: 100%; max-width: 560px; text-align: center; }
+  .guia .marca { margin: 0 0 40px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--acento); }
+  .guia h2 { margin: 6px 0 16px; font-size: 34px; }
+  .guia .texto { margin: 0 0 32px; font-size: 18px; line-height: 1.6; }
+  .guia .fila { justify-content: center; margin-bottom: 0; }
+  .guia .fila button { min-width: 130px; padding: 10px 16px; }
+  .guia .saltar { position: fixed; top: 16px; right: 16px; border: none; background: none; color: var(--suave); }
+  .guia .saltar:hover { color: var(--texto); }
+  .puntos { display: flex; justify-content: center; gap: 8px; margin-bottom: 32px; }
+  .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--borde); }
+  .punto.activo { background: var(--acento); }
+
+  /* Botón Cuenta con su menú */
+  .encabezado { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .menu-cuenta { position: relative; }
+  .opciones {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 5;
+    width: 260px; padding: 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    background: var(--panel); border: 1px solid var(--borde); border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  .opciones .nota { margin: 4px 8px 6px; }
+  .opciones button { text-align: left; background: none; border-color: transparent; }
+  .opciones button:hover { background: var(--fondo); border-color: var(--borde); }
+  .opciones .peligro { color: var(--alerta); }
+
+  /* Historial del perfil */
+  .dif { font-size: 12px; color: var(--suave); }
+  .aviso { color: var(--acento); font-size: 13px; margin: 8px 0 0; }
+  .resumen-perfil { margin: 0 0 12px; font-size: 14px; }
+
+  .oculto { display: none; }
+</style>
+</head>
+<body>
+<div class="contenedor">
+
+  <div class="encabezado">
+    <div>
+      <h1>Contador de calorías</h1>
+    </div>
+    <div id="menuCuenta" class="menu-cuenta oculto">
+      <button onclick="abrirMenuCuenta(event)">Cuenta</button>
+      <div id="opcionesCuenta" class="opciones oculto">
+        <p class="nota">Cuenta: <b id="nombreActual"></b></p>
+        <button onclick="cerrarMenuCuenta(); abrirPerfil()">Mi perfil</button>
+        <button onclick="cerrarMenuCuenta(); exportar()">Exportar respaldo</button>
+        <button onclick="cerrarMenuCuenta(); document.getElementById('archivo').click()">Importar respaldo</button>
+        <button class="peligro" onclick="cerrarMenuCuenta(); borrarCuenta()">Borrar cuenta</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pantallaGuia" class="guia oculto">
+    <button class="saltar" onclick="saltarGuia()">Saltar guía</button>
+    <div class="guia-contenido">
+      <p class="marca">Contador de calorías</p>
+      <p class="nota" id="contadorPaso"></p>
+      <h2 id="tituloPaso"></h2>
+      <p class="texto" id="textoPaso"></p>
+      <div class="puntos" id="puntosPaso"></div>
+      <div class="fila">
+        <button id="btnAtras" onclick="pasoGuia(-1)">Atrás</button>
+        <button id="btnSiguiente" class="principal" onclick="pasoGuia(1)">Siguiente</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pantallaCuenta" class="tarjeta oculto">
+    <h2>Creá tu cuenta</h2>
+    <div class="fila">
+      <input class="crece" id="nombreCuenta" placeholder="Tu nombre" onkeydown="if (event.key === 'Enter') crearCuenta()">
+      <button class="principal" onclick="crearCuenta()">Crear cuenta</button>
+    </div>
+    <p class="nota">Se guarda solo en este navegador. Solo podés tener una cuenta a la vez.</p>
+  </div>
+
+  <div id="pantallaPerfil" class="oculto">
+  <div class="tarjeta">
+    <h2 id="tituloPerfil">Tus características</h2>
+    <p class="nota" style="margin:0 0 12px">Las usamos para calcular tus metas. Después las podés cambiar cuando quieras desde Cuenta &gt; Mi perfil.</p>
+    <div class="metas">
+      <div><label for="p-edad">Edad</label><input type="number" min="0" id="p-edad"></div>
+      <div><label for="p-sexo">Sexo</label>
+        <select id="p-sexo"><option value="">-</option><option>Femenino</option><option>Masculino</option></select></div>
+      <div><label for="p-peso">Peso (kg)</label><input type="number" min="0" id="p-peso"></div>
+      <div><label for="p-altura">Altura (cm)</label><input type="number" min="0" id="p-altura"></div>
+      <div><label for="p-actividad">Actividad</label>
+        <select id="p-actividad"><option value="">-</option>
+          <option value="sedentario">Sedentario (sin ejercicio)</option>
+          <option value="ligero">Ligero (1-3 días/sem)</option>
+          <option value="moderado">Moderado (3-5 días/sem)</option>
+          <option value="intenso">Intenso (6-7 días/sem)</option>
+          <option value="extremo">Extremo (doble sesión)</option></select></div>
+      <div><label for="p-fase">Fase</label>
+        <select id="p-fase" onchange="mostrarDescObjetivo()"><option value="">-</option><option value="volumen">Volumen</option><option value="mantenimiento">Mantenimiento</option><option value="definicion">Definición</option></select></div>
+      <div><label for="p-prioridad">Prioridad de entrenamiento</label>
+        <select id="p-prioridad" onchange="mostrarDescObjetivo()"><option value="">-</option><option value="hipertrofia">Hipertrofia</option><option value="fuerza">Fuerza</option></select></div>
+      <div><label for="p-grasaCorp">% grasa corporal (opcional)</label><input type="number" min="0" id="p-grasaCorp"></div>
+    </div>
+    <p class="nota" id="descObjetivo" style="margin:10px 0 0"></p>
+    <div class="fila" style="margin-top:12px">
+      <button class="principal" onclick="guardarPerfil()">Guardar</button>
+      <button id="btnActualizarPerfil" onclick="actualizarPerfil()">Actualizar</button>
+      <button id="btnVolverPerfil" onclick="cerrarPerfil()">Volver</button>
+    </div>
+    <p class="nota" id="notaPerfil"><b>Guardar</b> corrige tus datos actuales. <b>Actualizar</b> suma un registro nuevo con la fecha de hoy al historial, para ver cómo cambian tu peso, altura y grasa con el tiempo.</p>
+    <p class="aviso" id="avisoPerfil"></p>
+  </div>
+
+  <div class="tarjeta" id="tarjetaHistorialPerfil">
+    <h2>Historial de mi perfil</h2>
+    <p class="resumen-perfil" id="resumenPerfil"></p>
+    <div class="tabla-scroll" id="tablaPerfil"></div>
+  </div>
+  </div>
+
+  <div id="pantallaApp" class="oculto">
+
+  <div class="tarjeta">
+    <h2>Metas del día</h2>
+    <p class="nota" id="objetivoActual" style="margin:0 0 10px"></p>
+    <div class="metas" id="metas"></div>
+    <p class="aviso" id="avisoMetas"></p>
+  </div>
+
+  <div class="tarjeta">
+    <div class="fila">
+      <h2 style="margin:0;align-self:center">Resumen del día</h2>
+      <input type="date" id="fecha" onchange="dibujarTodo()">
+    </div>
+    <div class="resumen" id="resumen"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Lo que comí</h2>
+    <div class="fila" id="favoritos"></div>
+    <div class="fila">
+      <select id="tipoComida">
+        <option>Desayuno</option><option>Almuerzo</option><option>Merienda</option><option>Cena</option><option>Otros</option>
+      </select>
+      <input class="crece" id="buscarComida" list="listaAlimentos" placeholder="Buscar alimento o plato...">
+      <input class="gramos" id="gramosComida" type="number" min="0" placeholder="Gramos">
+      <button onclick="guardarFavorito()" title="Guardar como favorito">☆</button>
+      <button class="principal" onclick="agregarComida()">Agregar</button>
+    </div>
+    <div id="tablaComidas"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Historial</h2>
+    <div class="fila pestanas">
+      <button id="btnSemana" onclick="cambiarModo('semana')">Últimos 7 días</button>
+      <button id="btnMes" onclick="cambiarModo('mes')">Mes del día elegido</button>
+    </div>
+    <div class="tabla-scroll" id="historial"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Crear un plato</h2>
+    <div class="fila">
+      <input class="crece" id="nombrePlato" placeholder="Nombre del plato (ej: Arroz con pollo)">
+    </div>
+    <div class="fila">
+      <input class="crece" id="buscarIngrediente" list="listaAlimentos" placeholder="Buscar ingrediente...">
+      <input class="gramos" id="gramosIngrediente" type="number" min="0" placeholder="Gramos">
+      <button onclick="agregarIngrediente()">Agregar ingrediente</button>
+    </div>
+    <div class="tabla-scroll" id="tablaIngredientes"></div>
+    <div class="fila" style="margin-top:12px">
+      <input style="width:200px" id="pesoFinal" type="number" min="0" placeholder="Peso final (opcional)">
+      <button class="principal" onclick="guardarPlato()">Guardar plato</button>
+    </div>
+    <p class="nota">Peso final: si el plato ya cocinado pesa distinto a la suma de los ingredientes, escribilo acá.</p>
+    <h2 style="margin-top:20px">Mis platos</h2>
+    <div id="listaPlatos"></div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Mis alimentos</h2>
+    <div class="fila">
+      <input class="crece" id="nuevoNombre" placeholder="Nombre (ej: Barrita de cereal X)">
+    </div>
+    <div class="form-alimento">
+      <div><label for="nuevoBase">Valores para (g)</label><input type="number" min="1" id="nuevoBase" value="100"></div>
+      <div><label for="nuevoKcal">Calorías (kcal)</label><input type="number" min="0" id="nuevoKcal" placeholder="Opcional"></div>
+      <div><label for="nuevoProt">Proteínas (g)</label><input type="number" min="0" id="nuevoProt"></div>
+      <div><label for="nuevoCarb">Carbohidratos (g)</label><input type="number" min="0" id="nuevoCarb"></div>
+      <div><label for="nuevoGrasa">Grasas (g)</label><input type="number" min="0" id="nuevoGrasa"></div>
+      <div><label for="nuevoFibra">Fibra (g)</label><input type="number" min="0" id="nuevoFibra" placeholder="Opcional"></div>
+    </div>
+    <div class="fila"><button class="principal" onclick="guardarAlimento()">Guardar alimento</button></div>
+    <div class="tabla-scroll" id="listaMisAlimentos"></div>
+  </div>
+
+  <p class="nota">Calorías, proteínas, carbohidratos y grasas salen de la guía en PDF (valores por 100 g). La fibra no figura en el PDF: son valores aproximados agregados aparte. Los alimentos de "Mis alimentos" los cargás vos.</p>
+  </div>
+</div>
+
+<datalist id="listaAlimentos"></datalist>
+<input type="file" id="archivo" accept=".json" style="display:none" onchange="importar(event)">
+
+<script>
+// Cada alimento: [nombre, kcal, proteínas, carbohidratos, grasas, fibra] por 100 g
+const alimentos = [
+["Pechuga de pollo (cocida)", 165.0, 31.0, 0.0, 3.6, 0],
+["Muslo de pollo (horneado)", 232.0, 24.0, 0.0, 15.0, 0],
+["Carne vacuna magra (lomo)", 190.0, 26.5, 0.0, 9.0, 0],
+["Carne molida magra", 217.0, 26.0, 0.0, 12.0, 0],
+["Lomo de cerdo (cocido)", 143.0, 26.0, 0.0, 3.5, 0],
+["Costilla de cerdo (asada)", 290.0, 24.0, 0.0, 21.0, 0],
+["Pechuga de pavo (cocida)", 135.0, 30.0, 0.0, 1.0, 0],
+["Carne de cordero (asada)", 216.0, 25.0, 0.0, 12.5, 0],
+["Hígado de vaca (salteado)", 175.0, 26.5, 5.2, 5.0, 0],
+["Lengua de vaca (cocida)", 224.0, 16.0, 0.0, 17.5, 0],
+["Carne de conejo", 136.0, 22.0, 0.0, 5.0, 0],
+["Jamón cocido extra", 105.0, 18.5, 1.0, 3.0, 0],
+["Jamón serrano magro", 241.0, 31.0, 0.5, 12.5, 0],
+["Bacon / tocino de cerdo", 541.0, 37.0, 1.4, 42.0, 0],
+["Chorizo de cerdo", 455.0, 24.0, 2.0, 38.0, 0],
+["Pechuga de pollo (cruda)", 120.0, 22.5, 0.0, 2.6, 0],
+["Pollo entero asado, carne con piel", 239.0, 27.3, 0.0, 13.6, 0],
+["Alitas de pollo horneadas", 254.0, 23.0, 0.0, 16.9, 0],
+["Pavo asado", 170.0, 29.0, 0.0, 5.0, 0],
+["Carne vacuna (cuadril magro)", 170.0, 26.0, 0.0, 7.0, 0],
+["Carne vacuna (nalga)", 150.0, 22.0, 0.0, 6.0, 0],
+["Carne vacuna (picada común)", 254.0, 17.2, 0.0, 20.0, 0],
+["Bife de costilla asado", 250.0, 25.0, 0.0, 16.0, 0],
+["Matambre de vaca cocido", 250.0, 25.0, 0.0, 16.0, 0],
+["Vacío de vaca asado", 245.0, 27.0, 0.0, 14.0, 0],
+["Carne de ternera magra", 172.0, 29.0, 0.0, 5.0, 0],
+["Riñón de vaca cocido", 158.0, 27.0, 0.0, 4.0, 0],
+["Corazón de vaca cocido", 165.0, 28.0, 0.0, 5.0, 0],
+["Hígado de pollo cocido", 167.0, 24.0, 0.7, 7.0, 0],
+["Panceta cocida", 541.0, 37.0, 1.4, 42.0, 0],
+["Salchicha tipo viena", 270.0, 11.0, 3.0, 23.0, 0],
+["Salchicha parrillera", 320.0, 15.0, 2.0, 28.0, 0],
+["Morcilla", 379.0, 14.0, 1.3, 35.0, 0],
+["Mortadela", 311.0, 16.0, 3.0, 25.0, 0],
+["Pastrón", 147.0, 21.0, 2.0, 5.0, 0],
+["Pechuga de pavo feteada", 104.0, 17.0, 3.0, 2.0, 0],
+["Jamón crudo", 250.0, 27.0, 0.5, 15.0, 0],
+["Carne de pato asada", 201.0, 23.5, 0.0, 11.0, 0],
+["Carne de ganso asada", 305.0, 25.0, 0.0, 21.0, 0],
+["Venado cocido", 158.0, 30.0, 0.0, 3.2, 0],
+["Atún fresco (cocido)", 130.0, 28.0, 0.0, 1.2, 0],
+["Atún en lata (al natural)", 116.0, 25.5, 0.0, 1.0, 0],
+["Atún en lata (en aceite)", 198.0, 29.0, 0.0, 9.0, 0],
+["Salmón fresco (horneado)", 206.0, 22.0, 0.0, 12.3, 0],
+["Merluza blanca (cocida)", 90.0, 18.5, 0.0, 1.2, 0],
+["Bacalao fresco (cocido)", 82.0, 17.8, 0.0, 0.7, 0],
+["Sardinas frescas (asadas)", 208.0, 24.5, 0.0, 11.5, 0],
+["Sardinas en conserva", 220.0, 24.0, 0.0, 13.5, 0],
+["Camarones (cocidos)", 99.0, 24.0, 0.2, 0.3, 0],
+["Calamar (cocido)", 92.0, 18.0, 3.0, 1.4, 0],
+["Mejillones (al vapor)", 86.0, 12.0, 3.7, 2.2, 0],
+["Trucha arcoíris (horneada)", 141.0, 20.5, 0.0, 6.2, 0],
+["Salmón ahumado", 117.0, 18.0, 0.0, 4.5, 0],
+["Merluza cruda", 75.0, 16.0, 0.0, 1.0, 0],
+["Salmón crudo", 208.0, 20.4, 0.0, 13.4, 0],
+["Atún crudo", 109.0, 24.0, 0.0, 0.5, 0],
+["Caballa cocida", 262.0, 24.0, 0.0, 18.0, 0],
+["Anchoas en conserva", 210.0, 29.0, 0.0, 10.0, 0],
+["Arenque ahumado", 217.0, 25.0, 0.0, 12.0, 0],
+["Lenguado cocido", 90.0, 19.0, 0.0, 1.5, 0],
+["Pez espada cocido", 172.0, 23.0, 0.0, 8.0, 0],
+["Abadejo cocido", 85.0, 18.0, 0.0, 1.0, 0],
+["Bacalao salado desalado", 105.0, 23.0, 0.0, 0.9, 0],
+["Pulpo cocido", 164.0, 30.0, 4.0, 2.0, 0],
+["Vieiras cocidas", 111.0, 21.0, 5.0, 0.8, 0],
+["Ostras crudas", 68.0, 7.0, 4.0, 2.5, 0],
+["Almejas cocidas", 148.0, 25.0, 5.0, 2.0, 0],
+["Cangrejo cocido", 97.0, 20.0, 0.0, 1.5, 0],
+["Langosta cocida", 89.0, 19.0, 0.0, 0.9, 0],
+["Surimi", 99.0, 15.0, 7.0, 0.9, 0],
+["Bacalao en conserva", 105.0, 23.0, 0.0, 1.0, 0],
+["Huevo entero (cocido)", 155.0, 12.6, 1.1, 10.6, 0],
+["Clara de huevo", 52.0, 11.0, 0.7, 0.2, 0],
+["Yema de huevo", 322.0, 16.0, 3.6, 26.5, 0],
+["Leche entera de vaca", 61.0, 3.2, 4.8, 3.3, 0],
+["Leche descremada", 35.0, 3.4, 5.0, 0.1, 0],
+["Yogur griego natural", 97.0, 9.0, 3.9, 5.0, 0],
+["Yogur griego 0% grasa", 59.0, 10.2, 3.6, 0.4, 0],
+["Yogur natural entero", 61.0, 3.5, 4.7, 3.3, 0],
+["Queso cottage", 72.0, 12.4, 2.7, 1.0, 0],
+["Queso fresco magro", 98.0, 12.0, 3.0, 4.0, 0],
+["Queso mozzarella", 280.0, 22.0, 2.2, 22.0, 0],
+["Queso parmesano", 431.0, 38.0, 4.1, 28.6, 0],
+["Queso cheddar curado", 403.0, 24.9, 1.3, 33.1, 0],
+["Mantequilla de leche", 717.0, 0.9, 0.1, 81.1, 0],
+["Huevo entero (crudo)", 143.0, 12.6, 0.7, 9.5, 0],
+["Leche semidescremada", 46.0, 3.3, 4.8, 1.6, 0],
+["Leche sin lactosa entera", 61.0, 3.2, 4.8, 3.3, 0],
+["Leche de cabra", 69.0, 3.6, 4.5, 4.1, 0],
+["Leche de soja sin azúcar", 33.0, 3.3, 0.7, 1.8, 0.5],
+["Leche de almendras sin azúcar", 15.0, 0.6, 0.3, 1.2, 0],
+["Leche de avena sin azúcar", 43.0, 1.0, 6.5, 1.5, 0.8],
+["Yogur natural descremado", 56.0, 5.0, 7.0, 0.2, 0],
+["Yogur bebible azucarado", 82.0, 3.0, 13.0, 2.0, 0],
+["Kéfir natural", 60.0, 3.5, 4.7, 3.3, 0],
+["Ricota entera", 174.0, 11.3, 3.0, 13.0, 0],
+["Ricota magra", 138.0, 11.0, 5.0, 7.0, 0],
+["Queso cremoso", 310.0, 20.0, 2.0, 25.0, 0],
+["Queso gouda", 356.0, 25.0, 2.2, 27.0, 0],
+["Queso brie", 334.0, 20.8, 0.5, 27.7, 0],
+["Queso azul", 353.0, 21.4, 2.3, 28.7, 0],
+["Queso provolone", 351.0, 26.0, 2.1, 27.0, 0],
+["Queso de cabra", 364.0, 22.0, 0.1, 30.0, 0],
+["Queso untable entero", 250.0, 6.0, 4.0, 24.0, 0],
+["Queso untable light", 170.0, 8.0, 6.0, 13.0, 0],
+["Crema de leche", 340.0, 2.1, 3.0, 36.0, 0],
+["Crema agria", 193.0, 2.4, 4.6, 19.0, 0],
+["Leche en polvo entera", 496.0, 26.0, 38.0, 27.0, 0],
+["Leche en polvo descremada", 360.0, 36.0, 52.0, 1.0, 0],
+["Arroz blanco (cocido)", 130.0, 2.7, 28.2, 0.3, 0.4],
+["Arroz integral (cocido)", 112.0, 2.6, 23.5, 0.9, 1.8],
+["Avena entera (cruda)", 389.0, 16.9, 66.3, 6.9, 10.6],
+["Lentejas (cocidas)", 116.0, 9.0, 20.1, 0.4, 7.9],
+["Garbanzos (cocidos)", 164.0, 8.9, 27.4, 2.6, 7.6],
+["Frijoles negros (cocidos)", 132.0, 8.9, 23.7, 0.5, 8.7],
+["Frijoles rojos (cocidos)", 127.0, 8.7, 22.8, 0.5, 7.4],
+["Quinoa (cocida)", 120.0, 4.4, 21.3, 1.9, 2.8],
+["Pasta refinada (hervida)", 158.0, 5.8, 30.9, 0.9, 1.8],
+["Pasta integral (hervida)", 124.0, 5.3, 26.5, 0.5, 3.9],
+["Cuscús (cocido)", 112.0, 3.8, 23.2, 0.2, 1.4],
+["Maíz dulce (desgranado)", 96.0, 3.4, 21.0, 1.5, 2.4],
+["Polenta (cocida)", 70.0, 1.5, 15.0, 0.4, 0.5],
+["Soja en grano (cocida)", 173.0, 16.6, 9.9, 9.0, 6.0],
+["Tofu firme (fresco)", 144.0, 15.5, 2.3, 8.8, 1.2],
+["Granola artesanal", 471.0, 10.0, 64.0, 20.0, 6.0],
+["Salvado de avena", 246.0, 17.3, 66.2, 7.0, 15.4],
+["Arroz blanco (crudo)", 365.0, 7.1, 80.0, 0.7, 1.3],
+["Arroz integral (crudo)", 370.0, 7.5, 77.0, 2.7, 3.5],
+["Avena cocida en agua", 71.0, 2.5, 12.0, 1.5, 1.7],
+["Trigo sarraceno cocido", 92.0, 3.4, 19.9, 0.6, 2.7],
+["Cebada perlada cocida", 123.0, 2.3, 28.2, 0.4, 3.8],
+["Mijo cocido", 119.0, 3.5, 23.7, 1.0, 1.3],
+["Amaranto cocido", 102.0, 3.8, 18.7, 1.6, 2.1],
+["Bulgur cocido", 83.0, 3.1, 18.6, 0.2, 4.5],
+["Farro cocido", 127.0, 5.0, 26.0, 0.8, 3.5],
+["Maíz en grano cocido", 96.0, 3.4, 21.0, 1.5, 2.4],
+["Arvejas cocidas", 84.0, 5.4, 15.0, 0.2, 5.5],
+["Habas cocidas", 110.0, 7.6, 19.7, 0.4, 5.4],
+["Porotos blancos cocidos", 139.0, 9.7, 25.1, 0.4, 6.3],
+["Porotos pintos cocidos", 143.0, 9.0, 26.2, 0.7, 9.0],
+["Porotos mung cocidos", 105.0, 7.0, 19.2, 0.4, 7.6],
+["Soja texturizada seca", 330.0, 50.0, 30.0, 1.0, 17.0],
+["Tempeh", 193.0, 20.3, 7.6, 10.8, 5.0],
+["Edamame cocido", 121.0, 11.9, 8.9, 5.2, 5.2],
+["Fideos de arroz cocidos", 109.0, 0.9, 25.0, 0.2, 1.0],
+["Ñoquis de papa cocidos", 150.0, 4.0, 31.0, 1.0, 1.5],
+["Cereal de maíz sin azúcar", 370.0, 7.0, 84.0, 1.0, 3.0],
+["Copos de avena", 379.0, 13.2, 67.7, 6.5, 10.1],
+["Trigo integral cocido", 123.0, 5.0, 27.0, 0.5, 4.5],
+["Harina de maíz", 370.0, 7.0, 79.0, 3.5, 7.3],
+["Tapioca cocida", 130.0, 0.2, 32.0, 0.0, 0],
+["Banana / plátano", 89.0, 1.1, 22.8, 0.3, 2.6],
+["Manzana con piel", 52.0, 0.3, 13.8, 0.2, 2.4],
+["Naranja fresca", 47.0, 0.9, 11.8, 0.1, 2.4],
+["Frutillas / fresas", 32.0, 0.7, 7.7, 0.3, 2.0],
+["Arándanos frescos", 57.0, 0.7, 14.5, 0.3, 2.4],
+["Palta / aguacate", 160.0, 2.0, 8.5, 14.7, 6.7],
+["Uvas rojas / verdes", 69.0, 0.7, 18.1, 0.2, 0.9],
+["Piña / ananá fresca", 50.0, 0.5, 13.1, 0.1, 1.4],
+["Almendras tostadas", 579.0, 21.2, 21.6, 49.9, 12.5],
+["Nueces de California", 654.0, 15.2, 13.7, 65.2, 6.7],
+["Maní tostado", 567.0, 25.8, 16.1, 49.2, 8.5],
+["Mantequilla de maní", 588.0, 25.1, 20.0, 50.0, 6.0],
+["Semillas de chía", 486.0, 16.5, 42.1, 30.7, 34.4],
+["Semillas de lino", 534.0, 18.3, 28.9, 42.2, 27.3],
+["Semillas de girasol", 584.0, 20.8, 20.0, 51.5, 8.6],
+["Castañas de cajú", 553.0, 18.2, 30.2, 43.8, 3.3],
+["Pera", 57.0, 0.4, 15.2, 0.1, 3.1],
+["Durazno", 39.0, 0.9, 9.5, 0.3, 1.5],
+["Ciruela", 46.0, 0.7, 11.4, 0.3, 1.4],
+["Kiwi", 61.0, 1.1, 14.7, 0.5, 3.0],
+["Mango", 60.0, 0.8, 15.0, 0.4, 1.6],
+["Papaya", 43.0, 0.5, 10.8, 0.3, 1.7],
+["Sandía", 30.0, 0.6, 7.6, 0.2, 0],
+["Melón", 34.0, 0.8, 8.2, 0.2, 0.9],
+["Pomelo", 42.0, 0.8, 10.7, 0.1, 1.6],
+["Mandarina", 53.0, 0.8, 13.3, 0.3, 1.8],
+["Cereza", 63.0, 1.1, 16.0, 0.2, 2.1],
+["Frambuesas", 52.0, 1.2, 11.9, 0.7, 6.5],
+["Moras", 43.0, 1.4, 9.6, 0.5, 5.3],
+["Granada", 83.0, 1.7, 18.7, 1.2, 4.0],
+["Maracuyá", 97.0, 2.2, 23.4, 0.7, 10.4],
+["Higo fresco", 74.0, 0.8, 19.2, 0.3, 2.9],
+["Dátil seco", 282.0, 2.5, 75.0, 0.4, 8.0],
+["Pasas de uva", 299.0, 3.1, 79.2, 0.5, 3.7],
+["Damasco seco", 241.0, 3.4, 62.6, 0.5, 7.3],
+["Ciruela pasa", 240.0, 2.2, 63.9, 0.4, 7.1],
+["Coco fresco", 354.0, 3.3, 15.2, 33.5, 9.0],
+["Coco rallado desecado", 660.0, 6.9, 23.7, 64.5, 16.3],
+["Avellanas", 628.0, 15.0, 16.7, 60.8, 9.7],
+["Pistachos", 562.0, 20.2, 27.2, 45.3, 10.6],
+["Nueces pecán", 691.0, 9.2, 13.9, 72.0, 9.6],
+["Nueces de Brasil", 659.0, 14.3, 11.7, 67.1, 7.5],
+["Pipas de calabaza", 559.0, 30.2, 10.7, 49.0, 6.0],
+["Semillas de sésamo", 573.0, 17.7, 23.4, 49.7, 11.8],
+["Castañas cocidas", 131.0, 2.0, 27.8, 1.4, 2.0],
+["Papa (cocida)", 87.0, 1.9, 20.1, 0.1, 1.8],
+["Batata (cocida)", 86.0, 1.6, 20.1, 0.1, 3.0],
+["Zapallo (cocido)", 26.0, 1.0, 6.5, 0.1, 1.5],
+["Zanahoria cruda", 41.0, 0.9, 9.6, 0.2, 2.8],
+["Brócoli cocido", 35.0, 2.4, 7.2, 0.4, 3.3],
+["Espinaca cruda", 23.0, 2.9, 3.6, 0.4, 2.2],
+["Tomate", 18.0, 0.9, 3.9, 0.2, 1.2],
+["Pepino con piel", 15.0, 0.7, 3.6, 0.1, 0],
+["Lechuga", 15.0, 1.4, 2.9, 0.2, 1.3],
+["Cebolla", 40.0, 1.1, 9.3, 0.1, 1.7],
+["Pimiento rojo/verde", 26.0, 1.0, 6.0, 0.3, 2.1],
+["Zucchini", 17.0, 1.2, 3.1, 0.3, 1.0],
+["Berenjena cocida", 25.0, 0.8, 5.9, 0.2, 2.5],
+["Coliflor cocida", 23.0, 1.8, 4.1, 0.5, 2.3],
+["Champiñones", 22.0, 3.1, 3.3, 0.3, 1.0],
+["Remolacha cocida", 44.0, 1.7, 9.6, 0.2, 2.0],
+["Acelga cocida", 20.0, 1.9, 3.7, 0.1, 2.1],
+["Repollo blanco", 25.0, 1.3, 5.8, 0.1, 2.5],
+["Repollo colorado", 31.0, 1.4, 7.4, 0.2, 2.1],
+["Coles de Bruselas cocidas", 36.0, 2.6, 7.1, 0.5, 2.6],
+["Espárragos cocidos", 22.0, 2.4, 4.1, 0.2, 2.0],
+["Alcaucil cocido", 53.0, 3.5, 11.0, 0.3, 5.7],
+["Apio", 16.0, 0.7, 3.0, 0.2, 1.6],
+["Rabanito", 16.0, 0.7, 3.4, 0.1, 1.6],
+["Nabo cocido", 22.0, 0.7, 5.1, 0.1, 1.8],
+["Chauchas cocidas", 35.0, 1.9, 7.9, 0.3, 3.2],
+["Arvejas frescas cocidas", 84.0, 5.4, 15.0, 0.2, 5.5],
+["Puerro cocido", 31.0, 0.8, 7.6, 0.2, 1.0],
+["Hinojo", 31.0, 1.2, 7.3, 0.2, 3.1],
+["Kale cocido", 28.0, 1.9, 5.6, 0.4, 2.0],
+["Berro", 11.0, 2.3, 1.3, 0.1, 0],
+["Rúcula", 25.0, 2.6, 3.7, 0.7, 1.6],
+["Escarola", 17.0, 1.3, 3.4, 0.2, 3.1],
+["Choclo hervido", 96.0, 3.4, 21.0, 1.5, 2.4],
+["Yuca / mandioca hervida", 125.0, 1.4, 30.0, 0.3, 1.8],
+["Ñame cocido", 116.0, 1.5, 27.5, 0.1, 3.9],
+["Jengibre fresco", 80.0, 1.8, 17.8, 0.8, 2.0],
+["Ajo", 149.0, 6.4, 33.1, 0.5, 2.1],
+["Perejil fresco", 36.0, 3.0, 6.3, 0.8, 3.3],
+["Cilantro fresco", 23.0, 2.1, 3.7, 0.5, 2.8],
+["Aceite de oliva extra", 884.0, 0.0, 0.0, 100.0, 0],
+["Aceite de girasol", 884.0, 0.0, 0.0, 100.0, 0],
+["Aceite de coco", 862.0, 0.0, 0.0, 100.0, 0],
+["Mayonesa comercial", 680.0, 1.0, 0.6, 74.9, 0],
+["Mayonesa light", 235.0, 0.5, 6.0, 23.0, 0],
+["Mostaza tradicional", 66.0, 4.4, 5.3, 3.3, 4.0],
+["Ketchup comercial", 112.0, 1.2, 26.0, 0.3, 0],
+["Salsa de soja", 53.0, 8.1, 4.9, 0.6, 0],
+["Dulce de leche", 315.0, 6.0, 55.0, 7.5, 0],
+["Miel de abejas pura", 304.0, 0.3, 82.4, 0.0, 0],
+["Aceite de maíz", 884.0, 0.0, 0.0, 100.0, 0],
+["Aceite de canola", 884.0, 0.0, 0.0, 100.0, 0],
+["Aceite de sésamo", 884.0, 0.0, 0.0, 100.0, 0],
+["Aceite de palta", 884.0, 0.0, 0.0, 100.0, 0],
+["Margarina", 717.0, 0.2, 0.7, 80.0, 0],
+["Vinagre", 18.0, 0.0, 0.0, 0.0, 0],
+["Aceto balsámico", 88.0, 0.5, 17.0, 0.0, 0],
+["Salsa barbacoa", 172.0, 0.8, 40.0, 0.6, 0],
+["Salsa de tomate simple", 29.0, 1.4, 5.0, 0.2, 1.5],
+["Pesto", 450.0, 5.0, 6.0, 45.0, 2.0],
+["Hummus", 166.0, 7.9, 14.3, 9.6, 6.0],
+["Guacamole", 150.0, 2.0, 8.0, 13.0, 5.0],
+["Tahini", 595.0, 17.0, 21.0, 54.0, 9.3],
+["Mermelada", 250.0, 0.4, 60.0, 0.1, 0],
+["Azúcar blanco", 387.0, 0.0, 100.0, 0.0, 0],
+["Azúcar mascabo", 380.0, 0.1, 98.0, 0.0, 0],
+["Jarabe de arce", 260.0, 0.0, 67.0, 0.1, 0],
+["Cacao amargo en polvo", 228.0, 19.6, 57.9, 13.7, 33.2],
+["Canela en polvo", 247.0, 4.0, 81.0, 1.2, 53.1],
+["Pan blanco de molde", 265.0, 9.0, 49.0, 3.2, 2.7],
+["Pan 100% integral", 247.0, 13.0, 41.3, 4.2, 6.0],
+["Pan de centeno denso", 259.0, 8.5, 48.3, 3.3, 5.8],
+["Harina de trigo común", 364.0, 10.3, 76.3, 1.0, 2.7],
+["Harina de almendras", 590.0, 21.4, 18.7, 50.3, 10.0],
+["Tortilla de trigo", 310.0, 8.5, 50.0, 8.0, 3.0],
+["Tortilla de maíz", 218.0, 5.7, 45.0, 2.8, 5.0],
+["Galletas de arroz", 387.0, 8.0, 81.5, 2.8, 4.0],
+["Proteína whey 80%", 370.0, 80.0, 6.0, 5.0, 0],
+["Aislado whey 90%", 360.0, 90.0, 1.0, 1.0, 0],
+["Creatina en polvo", 0.0, 0.0, 0.0, 0.0, 0],
+["Chocolate negro 85%", 580.0, 8.8, 36.0, 46.0, 11.0],
+["Pan francés / miñón", 270.0, 9.0, 56.0, 1.5, 2.4],
+["Pan de hamburguesa", 279.0, 9.0, 50.0, 5.0, 2.4],
+["Pan de pita", 275.0, 9.1, 55.7, 1.2, 2.2],
+["Pan de masa madre", 289.0, 9.0, 56.0, 2.0, 2.4],
+["Pan de salvado", 260.0, 10.0, 43.0, 4.0, 7.0],
+["Bagel", 275.0, 10.0, 53.0, 1.5, 2.3],
+["Galletas saladas tipo agua", 430.0, 9.0, 70.0, 12.0, 2.5],
+["Galletitas dulces simples", 460.0, 6.0, 72.0, 17.0, 2.0],
+["Tostadas de pan", 400.0, 12.0, 72.0, 6.0, 4.0],
+["Harina integral de trigo", 340.0, 13.2, 72.0, 2.5, 10.7],
+["Harina de avena", 404.0, 14.7, 65.7, 9.1, 6.5],
+["Harina de maíz fina", 370.0, 7.0, 79.0, 3.5, 4.0],
+["Harina de garbanzo", 387.0, 22.4, 57.8, 6.7, 10.8],
+["Harina de centeno", 349.0, 10.9, 75.0, 1.5, 15.0],
+["Harina de arroz", 366.0, 6.0, 80.0, 1.4, 2.4],
+["Harina de coco", 400.0, 20.0, 60.0, 13.0, 39.0],
+["Almidón de maíz", 381.0, 0.3, 91.3, 0.1, 0],
+["Premezcla para panqueques", 350.0, 8.0, 70.0, 4.0, 2.0],
+["Croissant", 406.0, 8.2, 45.8, 21.0, 2.6],
+["Medialuna dulce", 360.0, 7.0, 48.0, 15.0, 1.5],
+["Bizcocho salado", 450.0, 8.0, 55.0, 22.0, 2.0],
+["Facturas dulces promedio", 370.0, 7.0, 48.0, 16.0, 1.5],
+["Pasta de hojaldre horneada", 558.0, 7.0, 45.0, 38.0, 2.0],
+["Tapa de empanada", 310.0, 8.0, 48.0, 9.0, 2.0],
+["Masa de pizza horneada", 266.0, 8.7, 33.3, 10.4, 2.3],
+["Pan rallado", 395.0, 13.0, 72.0, 5.0, 4.5],
+["Afrecho de trigo", 216.0, 15.6, 64.5, 4.3, 42.8],
+["Proteína whey saborizada (promedio)", 400.0, 75.0, 10.0, 6.0, 0],
+["Chocolate con leche", 535.0, 7.6, 59.0, 30.0, 3.4],
+["Chocolate blanco", 539.0, 5.9, 59.0, 32.0, 0],
+["Cacao en polvo azucarado", 380.0, 5.0, 85.0, 3.0, 4.0],
+["Arroz con verduras casero", 120.0, 3.0, 22.0, 2.0, 1.5],
+["Puré de papa con leche", 110.0, 2.0, 17.0, 3.5, 1.5],
+["Puré de calabaza", 40.0, 1.0, 8.0, 0.5, 1.5],
+["Pizza de muzzarella", 266.0, 11.0, 33.0, 10.0, 2.3],
+["Empanada de carne al horno", 250.0, 10.0, 25.0, 12.0, 1.5],
+["Empanada de pollo al horno", 230.0, 11.0, 25.0, 9.0, 1.5],
+["Tarta de verdura", 190.0, 6.0, 20.0, 9.0, 1.5],
+["Tarta de jamón y queso", 260.0, 11.0, 22.0, 14.0, 0.8],
+["Hamburguesa completa (sin papas)", 250.0, 14.0, 20.0, 13.0, 1.5],
+["Milanesa de carne frita", 290.0, 19.0, 18.0, 16.0, 1.0],
+["Milanesa de pollo al horno", 220.0, 19.0, 15.0, 9.0, 1.0],
+["Papas fritas", 312.0, 3.4, 41.0, 15.0, 3.8],
+["Papas al horno", 149.0, 2.5, 25.0, 4.5, 2.5],
+["Sopa de verduras", 35.0, 1.5, 6.0, 0.5, 1.0],
+["Sopa de lentejas", 80.0, 4.5, 12.0, 1.5, 2.5],
+["Guiso de lentejas", 115.0, 6.0, 16.0, 3.0, 3.0],
+["Polenta con salsa de tomate", 95.0, 2.5, 18.0, 1.5, 1.2],
+["Omelette simple", 154.0, 11.0, 1.5, 11.0, 0],
+["Huevo revuelto con leche", 149.0, 10.0, 2.0, 11.0, 0],
+["Ensalada mixta sin aderezo", 25.0, 1.2, 4.0, 0.3, 1.5],
+["Ensalada rusa con mayonesa", 150.0, 3.0, 12.0, 10.0, 1.8],
+["Sándwich de jamón y queso", 280.0, 15.0, 27.0, 12.0, 1.5],
+["Sushi variado promedio", 150.0, 6.0, 25.0, 3.0, 1.0],
+["Lasaña de carne", 135.0, 8.0, 12.0, 6.0, 1.5],
+["Ravioles de ricota cocidos", 170.0, 7.0, 27.0, 4.0, 1.5],
+["Ñoquis con salsa de tomate", 140.0, 4.0, 26.0, 2.5, 1.8],
+["Humita", 120.0, 4.0, 18.0, 4.0, 2.0],
+["Locro", 140.0, 7.0, 14.0, 6.0, 3.5],
+["Tortilla de papa", 175.0, 6.0, 15.0, 10.0, 1.5],
+["Falafel", 333.0, 13.0, 32.0, 18.0, 5.0],
+["Hamburguesa vegetal", 180.0, 14.0, 15.0, 7.0, 4.0],
+["Tofu salteado", 160.0, 14.0, 5.0, 10.0, 1.5],
+["Pollo al curry con salsa", 150.0, 16.0, 6.0, 7.0, 1.0],
+["Chili con carne", 120.0, 9.0, 12.0, 4.0, 3.0],
+["Risotto de arroz", 140.0, 3.0, 22.0, 4.0, 0.5],
+["Fainá", 190.0, 6.0, 25.0, 7.0, 4.0],
+["Tamal de maíz", 210.0, 6.0, 31.0, 7.0, 2.5],
+["Pancake / panqueque simple", 227.0, 6.0, 28.0, 10.0, 0.8],
+["Crepe simple", 180.0, 6.0, 23.0, 7.0, 0.6]
+];
+
+const macros = [
+  { clave: "kcal",  texto: "Calorías",      unidad: "kcal" },
+  { clave: "prot",  texto: "Proteínas",     unidad: "g" },
+  { clave: "carb",  texto: "Carbohidratos", unidad: "g" },
+  { clave: "grasa", texto: "Grasas",        unidad: "g" },
+  { clave: "fibra", texto: "Fibra",         unidad: "g" }
+];
+const tipos = ["Desayuno", "Almuerzo", "Merienda", "Cena", "Otros"];
+const camposPerfil = ["edad", "sexo", "peso", "altura", "actividad", "fase", "prioridad", "grasaCorp"];
+
+// ---------- Guardado en el navegador ----------
+function leer(clave, porDefecto) {
+  try {
+    let guardado = localStorage.getItem(clave);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {}
+  return porDefecto;
+}
+
+function guardarTodo() {
+  try { localStorage.setItem("datosContador", JSON.stringify(datos)); } catch (e) {}
+}
+
+function nuevoUsuario() {
+  return {
+    perfil: { edad: "", sexo: "", peso: "", altura: "", actividad: "", fase: "", prioridad: "", grasaCorp: "" },
+    perfilListo: false,
+    historial: [],
+    metas: { kcal: 0, prot: 0, carb: 0, grasa: 0, fibra: 0 },
+    platos: [], favoritos: [], dias: {}, misAlimentos: []
+  };
+}
+
+let datos = leer("datosContador", null);
+if (!datos) {
+  datos = { actual: "", usuarios: {} };
+  // Si había datos de la versión 1 (sin cuentas), pasan a la cuenta "Yo"
+  if (leer("dias", null)) {
+    let primero = nuevoUsuario();
+    primero.metas = leer("metas", primero.metas);
+    primero.platos = leer("platos", []);
+    primero.dias = leer("dias", {});
+    datos = { actual: "Yo", usuarios: { Yo: primero } };
+  }
+}
+// Una sola cuenta a la vez: si había varias, queda la actual
+if (Object.keys(datos.usuarios).length > 1 && datos.usuarios[datos.actual]) {
+  let unica = {};
+  unica[datos.actual] = datos.usuarios[datos.actual];
+  datos.usuarios = unica;
+}
+
+let usuario, metas, platos, dias, favoritos, misAlimentos;
+let ingredientes = [];
+let modo = "semana";
+let paso = 0;
+let viendoGuia = false;
+let viendoPerfil = false;
+
+// ---------- Funciones útiles ----------
+function formato(n) {
+  return (Math.round(n * 10) / 10).toString().replace(".", ",");
+}
+
+function limpiar(texto) {
+  return String(texto).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function numero(texto) {
+  return parseFloat(String(texto).replace(",", "."));
+}
+
+function textoFecha(d) {
+  let mes = String(d.getMonth() + 1).padStart(2, "0");
+  let dia = String(d.getDate()).padStart(2, "0");
+  return d.getFullYear() + "-" + mes + "-" + dia;
+}
+
+function todosLosItems() {
+  let lista = [];
+  for (let a of alimentos) {
+    lista.push({ nombre: a[0], kcal: a[1], prot: a[2], carb: a[3], grasa: a[4], fibra: a[5] });
+  }
+  for (let m of misAlimentos) {
+    lista.push({ nombre: m.nombre, kcal: m.kcal, prot: m.prot, carb: m.carb, grasa: m.grasa, fibra: m.fibra });
+  }
+  for (let p of platos) {
+    lista.push({ nombre: "Plato: " + p.nombre, ...p.por100 });
+  }
+  return lista;
+}
+
+function buscarItem(texto) {
+  let buscado = texto.trim().toLowerCase();
+  return todosLosItems().find(function (i) { return i.nombre.toLowerCase() === buscado; });
+}
+
+function calcular(item, gramos) {
+  let f = gramos / 100;
+  return { kcal: item.kcal * f, prot: item.prot * f, carb: item.carb * f, grasa: item.grasa * f, fibra: item.fibra * f };
+}
+
+function sumar(lista) {
+  let total = { kcal: 0, prot: 0, carb: 0, grasa: 0, fibra: 0 };
+  for (let x of lista) {
+    for (let m of macros) total[m.clave] += x[m.clave];
+  }
+  return total;
+}
+
+// Dibuja una tabla. Si x.idx existe, es la posición real en la lista del día.
+function tabla(lista, borrar, editar, etiquetaTotal) {
+  if (lista.length === 0) return '<p class="vacio">Todavía no hay nada.</p>';
+  let t = sumar(lista);
+  let html = "<table><tr><th>Alimento</th><th>g</th><th>kcal</th><th>Prot</th><th>Carb</th><th>Grasa</th><th>Fibra</th><th></th></tr>";
+  lista.forEach(function (x, i) {
+    let pos = x.idx !== undefined ? x.idx : i;
+    let celdaGramos = formato(x.gramos);
+    if (editar) {
+      celdaGramos = '<input class="mini" type="number" min="1" value="' + x.gramos + '" onchange="' + editar + '(' + pos + ', this.value)">';
+    }
+    html += "<tr><td>" + limpiar(x.nombre) + "</td><td>" + celdaGramos + "</td><td>" + formato(x.kcal) +
+      "</td><td>" + formato(x.prot) + "</td><td>" + formato(x.carb) + "</td><td>" + formato(x.grasa) +
+      "</td><td>" + formato(x.fibra) + '</td><td><button class="borrar" title="Quitar" onclick="' + borrar + '(' + pos + ')">×</button></td></tr>';
+  });
+  html += '<tr class="total"><td>' + etiquetaTotal + "</td><td></td><td>" + formato(t.kcal) + "</td><td>" + formato(t.prot) +
+    "</td><td>" + formato(t.carb) + "</td><td>" + formato(t.grasa) + "</td><td>" + formato(t.fibra) + "</td><td></td></tr></table>";
+  return html;
+}
+
+// ---------- Cuentas ----------
+function perfilCompleto(p) {
+  return numero(p.edad) > 0 && !!p.sexo && numero(p.peso) > 0 && numero(p.altura) > 0 && !!p.actividad && !!p.fase && !!p.prioridad;
+}
+
+// Cuentas con el objetivo viejo (un solo campo): se pasan a fase + prioridad
+const objetivoViejo = {
+  hipertrofia: ["volumen", "hipertrofia"], volumen: ["volumen", "hipertrofia"],
+  mantenimiento: ["mantenimiento", "hipertrofia"], fuerza: ["mantenimiento", "fuerza"],
+  definicion: ["definicion", "hipertrofia"], grasa: ["definicion", "hipertrofia"]
+};
+
+function migrarObjetivo(registro) {
+  if (!registro.fase && objetivoViejo[registro.objetivo]) {
+    registro.fase = objetivoViejo[registro.objetivo][0];
+    registro.prioridad = objetivoViejo[registro.objetivo][1];
+  }
+}
+
+function elegirUsuario(nombre) {
+  let guardado = datos.usuarios[nombre];
+  usuario = Object.assign(nuevoUsuario(), guardado);
+  usuario.perfil = Object.assign(nuevoUsuario().perfil, usuario.perfil);
+  migrarObjetivo(usuario.perfil);
+  for (let h of usuario.historial || []) migrarObjetivo(h);
+  // Cuentas de versiones anteriores: si ya tenían el perfil completo, no se lo pedimos de nuevo
+  if (guardado.perfilListo === undefined) usuario.perfilListo = perfilCompleto(usuario.perfil);
+  // Si el perfil ya estaba guardado pero todavía no hay historial, el primer registro es el de hoy
+  if (usuario.perfilListo && usuario.historial.length === 0) usuario.historial.push(registroNuevo(usuario.perfil));
+  datos.usuarios[nombre] = usuario;
+  datos.actual = nombre;
+  metas = usuario.metas;
+  if (usuario.perfilListo && metasVacias()) {
+    let r = calcularPlan();
+    if (!r.error) {
+      metas.kcal = Math.round(r.kcal); metas.prot = Math.round(r.prot); metas.carb = Math.round(r.carb);
+      metas.grasa = Math.round(r.grasa); metas.fibra = Math.round(r.fibra);
+      usuario.objetivoMetas = usuario.perfil.fase + "|" + usuario.perfil.prioridad;
+    }
+  }
+  platos = usuario.platos;
+  misAlimentos = usuario.misAlimentos;
+  dias = usuario.dias;
+  favoritos = usuario.favoritos;
+  ingredientes = [];
+  guardarTodo();
+  dibujarNombre();
+  dibujarPerfil();
+  dibujarHistorialPerfil();
+  dibujarMetas();
+  dibujarLista();
+  dibujarPlatos();
+  dibujarMisAlimentos();
+  dibujarIngredientes();
+  dibujarFavoritos();
+  dibujarTodo();
+  mostrarPantalla();
+}
+
+function hayCuenta() {
+  return datos.actual !== "" && !!datos.usuarios[datos.actual];
+}
+
+function dibujarNombre() {
+  document.getElementById("nombreActual").textContent = datos.actual;
+}
+
+function crearCuenta() {
+  let nombre = document.getElementById("nombreCuenta").value.trim();
+  if (nombre === "") { alert("Escribí un nombre para la cuenta."); return; }
+  datos = { actual: nombre, usuarios: {} };
+  datos.usuarios[nombre] = nuevoUsuario();
+  document.getElementById("nombreCuenta").value = "";
+  viendoGuia = false;
+  viendoPerfil = false;
+  elegirUsuario(nombre);
+}
+
+function borrarCuenta() {
+  if (!confirm("¿Borrar la cuenta " + datos.actual + " y todos sus datos? Después vas a poder crear una nueva.")) return;
+  datos = { actual: "", usuarios: {} };
+  guardarTodo();
+  paso = 0;
+  viendoPerfil = false;
+  viendoGuia = !guiaVista();
+  dibujarGuia();
+  mostrarPantalla();
+}
+
+// ---------- Guía y pantallas ----------
+const pasosGuia = [
+  { titulo: "Bienvenido", texto: "Esta app calcula tus calorías y macronutrientes a partir de los gramos que comés. En unos pasos te muestro cómo usarla." },
+  { titulo: "Creá tu cuenta", texto: "Escribís tu nombre y listo. Solo podés tener una cuenta y se guarda en este navegador. Después cargás tus características (edad, sexo, peso, altura, actividad, fase y prioridad de entrenamiento), tocás Guardar y entrás a la app. Las podés actualizar cuando quieras desde Cuenta > Mi perfil, y queda un historial de tus medidas." },
+  { titulo: "Definí tus metas", texto: "Escribí tus metas diarias de calorías, proteínas, carbohidratos, grasas y fibra, Se calculan solas cuando guardás tu perfil, y las podés cambiar a mano." },
+  { titulo: "Anotá lo que comés", texto: "Elegí el tipo de comida (desayuno, almuerzo...), buscá el alimento, escribí los gramos y tocá Agregar. Si te equivocás, cambiá los gramos en la tabla. Con la estrella ☆ guardás favoritos." },
+  { titulo: "Creá tus platos", texto: "Armá un plato sumando ingredientes en gramos y guardalo. Después lo buscás como cualquier alimento y escribís cuántos gramos comiste. Si un alimento no está en la lista, cargalo en 'Mis alimentos' con los datos de la etiqueta." },
+  { titulo: "Mirá tu progreso", texto: "El resumen te muestra cuánto llevás y cuánto falta para cada meta. El historial junta los últimos 7 días o el mes. Exportá un respaldo de vez en cuando." }
+];
+
+function dibujarGuia() {
+  document.getElementById("contadorPaso").textContent = "Paso " + (paso + 1) + " de " + pasosGuia.length;
+  document.getElementById("tituloPaso").textContent = pasosGuia[paso].titulo;
+  document.getElementById("textoPaso").textContent = pasosGuia[paso].texto;
+  document.getElementById("btnAtras").className = paso === 0 ? "oculto" : "";
+  let puntos = "";
+  for (let i = 0; i < pasosGuia.length; i++) {
+    puntos += '<span class="punto' + (i === paso ? " activo" : "") + '"></span>';
+  }
+  document.getElementById("puntosPaso").innerHTML = puntos;
+  let texto = "Siguiente";
+  if (paso === pasosGuia.length - 1) texto = hayCuenta() ? "Entrar a la app" : "Crear mi cuenta";
+  document.getElementById("btnSiguiente").textContent = texto;
+}
+
+// La guía se muestra solo la primera vez. Se acuerda en el navegador (aparte de la cuenta).
+function guiaVista() {
+  try { return localStorage.getItem("guiaVista") === "si"; } catch (e) { return false; }
+}
+
+function marcarGuiaVista() {
+  try { localStorage.setItem("guiaVista", "si"); } catch (e) {}
+}
+
+function saltarGuia() {
+  marcarGuiaVista();
+  viendoGuia = false;
+  mostrarPantalla();
+}
+
+function pasoGuia(cambio) {
+  paso += cambio;
+  if (paso > pasosGuia.length - 1) {
+    paso = pasosGuia.length - 1;
+    marcarGuiaVista();
+    viendoGuia = false;
+    mostrarPantalla();
+    return;
+  }
+  if (paso < 0) paso = 0;
+  dibujarGuia();
+}
+
+// Muestra solo una pantalla: guía, crear cuenta o la app completa
+function mostrarPantalla() {
+  let cuenta = hayCuenta();
+  let perfilListo = cuenta && !!datos.usuarios[datos.actual].perfilListo;
+  let pedirPerfil = !viendoGuia && cuenta && (!perfilListo || viendoPerfil);
+  document.getElementById("pantallaGuia").className = "guia" + (viendoGuia ? "" : " oculto");
+  document.body.style.overflow = viendoGuia ? "hidden" : "";
+  document.getElementById("pantallaCuenta").className = "tarjeta" + (!viendoGuia && !cuenta ? "" : " oculto");
+  let verApp = !viendoGuia && cuenta && !pedirPerfil;
+  document.getElementById("pantallaPerfil").className = pedirPerfil ? "" : "oculto";
+  document.getElementById("pantallaApp").className = verApp ? "" : "oculto";
+  document.getElementById("menuCuenta").className = "menu-cuenta" + (verApp ? "" : " oculto");
+  cerrarMenuCuenta();
+  document.getElementById("tituloPerfil").textContent = perfilListo ? "Mi perfil" : "Tus características";
+  let soloAlActualizar = perfilListo ? "" : "oculto";
+  document.getElementById("btnVolverPerfil").className = soloAlActualizar;
+  document.getElementById("btnActualizarPerfil").className = soloAlActualizar;
+  document.getElementById("notaPerfil").className = perfilListo ? "nota" : "oculto";
+  document.getElementById("tarjetaHistorialPerfil").className = "tarjeta " + soloAlActualizar;
+  window.scrollTo(0, 0);
+}
+
+function exportar() {
+  let archivo = new Blob([JSON.stringify(datos)], { type: "application/json" });
+  let enlace = document.createElement("a");
+  enlace.href = URL.createObjectURL(archivo);
+  enlace.download = "contador_respaldo.json";
+  enlace.click();
+}
+
+function importar(evento) {
+  let lector = new FileReader();
+  lector.onload = function () {
+    try {
+      let nuevo = JSON.parse(lector.result);
+      if (!nuevo.usuarios || Object.keys(nuevo.usuarios).length === 0) throw new Error("vacío");
+      if (!confirm("Esto reemplaza todos los datos actuales. ¿Seguir?")) return;
+      let nombre = nuevo.usuarios[nuevo.actual] ? nuevo.actual : Object.keys(nuevo.usuarios)[0];
+      datos = { actual: nombre, usuarios: {} };
+      datos.usuarios[nombre] = nuevo.usuarios[nombre];
+      elegirUsuario(nombre);
+    } catch (e) {
+      alert("El archivo no es un respaldo válido.");
+    }
+  };
+  lector.readAsText(evento.target.files[0]);
+  evento.target.value = "";
+}
+
+// ---------- Perfil ----------
+function mostrarDescObjetivo() {
+  let fase = document.getElementById("p-fase").value;
+  let prioridad = document.getElementById("p-prioridad").value;
+  let texto = "";
+  if (fase && prioridad) texto = etiquetaObjetivo(fase, prioridad) + ": " + enfoques[fase + "|" + prioridad];
+  document.getElementById("descObjetivo").textContent = texto;
+}
+
+function dibujarPerfil() {
+  for (let c of camposPerfil) document.getElementById("p-" + c).value = usuario.perfil[c] || "";
+  mostrarDescObjetivo();
+}
+
+function metasVacias() {
+  return macros.every(function (m) { return !metas[m.clave]; });
+}
+
+// Si las metas están vacías se calculan solas. Si ya tenías metas y los datos nuevos
+// dan otras, pregunta antes de reemplazarlas (por si las cambiaste a mano).
+function calcularMetasAlGuardar() {
+  if (metasVacias()) { aplicarReferencias(); return; }
+  let r = calcularPlan();
+  if (r.error) return;
+  let nuevas = { kcal: r.kcal, prot: r.prot, carb: r.carb, grasa: r.grasa, fibra: r.fibra };
+  let distintas = macros.some(function (m) { return Math.round(nuevas[m.clave]) !== metas[m.clave]; });
+  if (distintas && confirm("Cambiaron tus datos. ¿Querés recalcular tus metas diarias? Las metas actuales se van a reemplazar.")) {
+    aplicarReferencias();
+  }
+}
+
+// Lee los campos del formulario. Si falta algo, avisa y devuelve null
+function leerFormularioPerfil() {
+  let nuevo = {};
+  for (let c of camposPerfil) nuevo[c] = document.getElementById("p-" + c).value.trim();
+  if (!perfilCompleto(nuevo)) {
+    alert("Completá edad, sexo, peso, altura, actividad, fase y prioridad de entrenamiento. El % de grasa corporal es opcional.");
+    return null;
+  }
+  return nuevo;
+}
+
+// Un registro del historial = los datos del perfil + la fecha de hoy
+function registroNuevo(perfil) {
+  let registro = Object.assign({}, perfil);
+  registro.fecha = textoFecha(new Date());
+  return registro;
+}
+
+// Guardar: cambia los datos actuales. No crea un registro nuevo:
+// la primera vez crea el registro inicial y después corrige el último.
+function guardarPerfil() {
+  let nuevo = leerFormularioPerfil();
+  if (!nuevo) return;
+  usuario.perfil = nuevo;
+  usuario.perfilListo = true;
+  if (usuario.historial.length === 0) {
+    usuario.historial.push(registroNuevo(nuevo));
+  } else {
+    Object.assign(usuario.historial[usuario.historial.length - 1], nuevo);
+  }
+  guardarTodo();
+  calcularMetasAlGuardar();
+  viendoPerfil = false;
+  mostrarPantalla();
+}
+
+// Actualizar: agrega un registro nuevo al historial con la fecha de hoy
+function actualizarPerfil() {
+  let nuevo = leerFormularioPerfil();
+  if (!nuevo) return;
+  let ultimo = usuario.historial[usuario.historial.length - 1];
+  let igual = !!ultimo;
+  for (let c of camposPerfil) {
+    if (ultimo && String(ultimo[c] || "") !== nuevo[c]) igual = false;
+  }
+  if (igual) {
+    alert("No cambiaste ningún dato desde el último registro. Cambiá algo y tocá Actualizar.");
+    return;
+  }
+  usuario.perfil = nuevo;
+  usuario.historial.push(registroNuevo(nuevo));
+  guardarTodo();
+  dibujarHistorialPerfil();
+  document.getElementById("avisoPerfil").textContent = "Listo: se agregó un registro nuevo al historial (" + fechaLinda(textoFecha(new Date())) + ").";
+  calcularMetasAlGuardar();
+}
+
+function abrirPerfil() {
+  dibujarPerfil();
+  dibujarHistorialPerfil();
+  document.getElementById("avisoPerfil").textContent = "";
+  viendoPerfil = true;
+  mostrarPantalla();
+}
+
+function fechaLinda(texto) {
+  let partes = texto.split("-");
+  return partes[2] + "/" + partes[1] + "/" + partes[0];
+}
+
+function diasEntre(fecha1, fecha2) {
+  let a = fecha1.split("-"), b = fecha2.split("-");
+  let d1 = new Date(a[0], a[1] - 1, a[2]);
+  let d2 = new Date(b[0], b[1] - 1, b[2]);
+  return Math.round((d2 - d1) / 86400000);
+}
+
+function mayuscula(texto) {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+// Muestra un valor y, entre paréntesis, cuánto cambió respecto del registro anterior
+function valorConCambio(actual, anterior) {
+  let a = numero(actual);
+  if (isNaN(a)) return "-";
+  let texto = formato(a);
+  let b = numero(anterior);
+  let dif = Math.round((a - b) * 10) / 10;
+  if (!isNaN(b) && dif !== 0) texto += ' <span class="dif">(' + (dif > 0 ? "+" : "") + formato(dif) + ")</span>";
+  return texto;
+}
+
+function cambioTotal(primero, ultimo) {
+  let campos = [["peso", "peso", "kg"], ["altura", "altura", "cm"], ["grasaCorp", "grasa corporal", "%"]];
+  let partes = [];
+  for (let c of campos) {
+    let a = numero(primero[c[0]]), b = numero(ultimo[c[0]]);
+    if (isNaN(a) || isNaN(b)) continue;
+    let dif = Math.round((b - a) * 10) / 10;
+    partes.push(c[1] + " " + (dif === 0 ? "sin cambios" : (dif > 0 ? "+" : "") + formato(dif) + " " + c[2]));
+  }
+  return partes.join(", ");
+}
+
+function dibujarHistorialPerfil() {
+  let lista = usuario.historial;
+  if (lista.length === 0) {
+    document.getElementById("resumenPerfil").textContent = "";
+    document.getElementById("tablaPerfil").innerHTML = "";
+    return;
+  }
+  let primero = lista[0], ultimo = lista[lista.length - 1];
+  if (lista.length === 1) {
+    document.getElementById("resumenPerfil").textContent = "Registro inicial del " + fechaLinda(primero.fecha) + ". Cuando cambien tus medidas, tocá Actualizar para ver tu evolución.";
+  } else {
+    let dias = diasEntre(primero.fecha, ultimo.fecha);
+    let periodo = dias === 0 ? "el mismo día" : dias + (dias === 1 ? " día" : " días");
+    document.getElementById("resumenPerfil").textContent = "Desde el " + fechaLinda(primero.fecha) + " hasta el " + fechaLinda(ultimo.fecha) +
+      " (" + periodo + "): " + cambioTotal(primero, ultimo) + ".";
+  }
+  // Del más nuevo al más viejo; cada cambio se compara con el registro anterior
+  let html = "<table><tr><th>Fecha</th><th>Peso (kg)</th><th>Altura (cm)</th><th>% grasa</th><th>Edad</th><th>Actividad</th><th>Fase y prioridad</th></tr>";
+  for (let i = lista.length - 1; i >= 0; i--) {
+    let r = lista[i], antes = lista[i - 1] || {};
+    let fecha = fechaLinda(r.fecha) + (i === 0 ? " (inicial)" : "");
+    let objetivo = fases[r.fase] && prioridades[r.prioridad] ? etiquetaObjetivo(r.fase, r.prioridad) : "-";
+    html += "<tr><td>" + fecha + "</td><td>" + valorConCambio(r.peso, antes.peso) + "</td><td>" + valorConCambio(r.altura, antes.altura) +
+      "</td><td>" + valorConCambio(r.grasaCorp, antes.grasaCorp) + "</td><td>" + limpiar(r.edad) + "</td><td>" +
+      limpiar(mayuscula(r.actividad || "-")) + "</td><td>" + limpiar(objetivo) + "</td></tr>";
+  }
+  document.getElementById("tablaPerfil").innerHTML = html + "</table>";
+}
+
+function abrirMenuCuenta(evento) {
+  evento.stopPropagation();
+  document.getElementById("opcionesCuenta").classList.toggle("oculto");
+}
+
+function cerrarMenuCuenta() {
+  document.getElementById("opcionesCuenta").classList.add("oculto");
+}
+
+// Si tocás en cualquier otro lado, el menú se cierra
+document.addEventListener("click", function (evento) {
+  if (!document.getElementById("menuCuenta").contains(evento.target)) cerrarMenuCuenta();
+});
+
+function cerrarPerfil() {
+  viendoPerfil = false;
+  mostrarPantalla();
+}
+
+// Método del PDF de cálculo energético (se usa el punto medio de cada rango)
+const coeficientes = { sedentario: 1.2, ligero: 1.375, moderado: 1.55, intenso: 1.725, extremo: 1.9 };
+// Guía de seis combinaciones: dos decisiones independientes.
+// Fase (energía) + prioridad de entrenamiento (proteína). La grasa es 30 % de las kcal y los carbohidratos son el resto.
+const fases = {
+  volumen:       { nombre: "volumen",       ajuste: 0.10 },
+  mantenimiento: { nombre: "mantenimiento", ajuste: 0 },
+  definicion:    { nombre: "definición",    ajuste: -0.10 }
+};
+const prioridades = {
+  hipertrofia: { nombre: "hipertrofia", prot: 1.8 },
+  fuerza:      { nombre: "fuerza",      prot: 1.6 }
+};
+const enfoques = {
+  "volumen|hipertrofia":       "Priorizar progresión de cargas y suficiente energía para facilitar el crecimiento muscular.",
+  "volumen|fuerza":            "Buscar rendimiento y recuperación; el superávit no es imprescindible para mejorar la fuerza.",
+  "mantenimiento|hipertrofia": "Posible recomposición corporal, sobre todo en principiantes y al retomar el entrenamiento.",
+  "mantenimiento|fuerza":      "Mejorar marcas y técnica sin perseguir cambios de peso.",
+  "definicion|hipertrofia":    "En adultos, priorizar preservar el músculo. Ganar músculo a la vez es posible en algunos casos, no está garantizado.",
+  "definicion|fuerza":         "Preservar el rendimiento y la recuperación durante los cambios de composición corporal."
+};
+// Para menores de 18 años: criterio de la guía, sin superávits ni déficits automáticos
+const criterioMenor = {
+  volumen:       "Si se busca ganar masa, evaluar crecimiento, suficiencia de comidas y progresión de entrenamiento; no fijar un superávit automático.",
+  mantenimiento: "Priorizar una alimentación suficiente para crecer y rendir; mantener el peso no siempre es apropiado durante el desarrollo.",
+  definicion:    "Si preocupa la grasa corporal, priorizar la valoración pediátrica y hábitos sostenibles; no establecer un déficit por cuenta propia."
+};
+const prioridadMenor = {
+  hipertrofia: "La prioridad de entrenamiento es técnica, progresión y recuperación muscular.",
+  fuerza:      "La prioridad de entrenamiento es técnica, progresión de fuerza y recuperación."
+};
+
+function etiquetaObjetivo(fase, prioridad) {
+  return mayuscula(fases[fase].nombre) + " + " + prioridades[prioridad].nombre;
+}
+
+function calcularPlan() {
+  let p = usuario.perfil;
+  let peso = numero(p.peso);
+  let altura = numero(p.altura);
+  let edad = numero(p.edad);
+  let pctGrasa = numero(p.grasaCorp);
+  let coef = coeficientes[p.actividad];
+  let fase = fases[p.fase];
+  let prioridad = prioridades[p.prioridad];
+  if (isNaN(peso) || peso <= 0 || isNaN(edad) || edad <= 0 || !coef || !fase || !prioridad) {
+    return { error: "Cargá edad, peso, actividad, fase y prioridad de entrenamiento para calcular las metas." };
+  }
+  if (edad < 18) {
+    return { error: "El programa no calcula metas para menores de 18 años: las fórmulas y los rangos son para adultos y en la adolescencia las necesidades dependen del crecimiento. " +
+      criterioMenor[p.fase] + " " + prioridadMenor[p.prioridad] + " Podés escribir tus metas a mano. Referencias de la guía para 14 a 18 años: proteínas 0,85 g/kg, carbohidratos 45 a 65 % de la energía, grasas 25 a 35 % y fibra 38 g (varones) o 26 g (mujeres). Para cambiar el peso o la composición corporal, consultá con un profesional de la salud con experiencia en nutrición deportiva." };
+  }
+
+  // Paso 1: TMB
+  let tmb;
+  if (!isNaN(pctGrasa) && pctGrasa > 0 && pctGrasa < 60) {
+    tmb = 370 + 21.6 * peso * (1 - pctGrasa / 100);
+  } else {
+    if (isNaN(altura) || altura <= 0 || (p.sexo !== "Femenino" && p.sexo !== "Masculino")) {
+      return { error: "Faltan sexo o altura para el cálculo. También podés cargar tu % de grasa corporal." };
+    }
+    tmb = 10 * peso + 6.25 * altura - 5 * edad + (p.sexo === "Masculino" ? 5 : -161);
+  }
+
+  // Pasos 2 y 3: gasto total y ajuste según la fase
+  let kcal = tmb * coef * (1 + fase.ajuste);
+
+  // Paso 4: proteína según la prioridad, grasa 30 % de las kcal y carbohidratos como resto
+  let prot = prioridad.prot * peso;
+  let grasa = kcal * 0.30 / 9;
+  let carb = Math.max(0, (kcal - prot * 4 - grasa * 9) / 4);
+
+  // Fibra: 14 g por cada 1.000 kcal
+  let fibra = kcal / 1000 * 14;
+  return { kcal: kcal, prot: prot, grasa: grasa, carb: carb, fibra: fibra, aviso: "" };
+}
+
+let notaMetas = "";
+
+function aplicarReferencias() {
+  let r = calcularPlan();
+  notaMetas = r.error || r.aviso || "";
+  if (r.error) { alert(r.error); dibujarMetas(); return; }
+  metas.kcal = Math.round(r.kcal);
+  metas.prot = Math.round(r.prot);
+  metas.carb = Math.round(r.carb);
+  metas.grasa = Math.round(r.grasa);
+  metas.fibra = Math.round(r.fibra);
+  usuario.objetivoMetas = usuario.perfil.fase + "|" + usuario.perfil.prioridad;
+  guardarTodo();
+  dibujarMetas();
+  dibujarResumen();
+  dibujarHistorial();
+}
+
+// ---------- Mis alimentos ----------
+function guardarAlimento() {
+  let nombre = document.getElementById("nuevoNombre").value.trim();
+  let base = numero(document.getElementById("nuevoBase").value);
+  let prot = numero(document.getElementById("nuevoProt").value);
+  let carb = numero(document.getElementById("nuevoCarb").value);
+  let grasa = numero(document.getElementById("nuevoGrasa").value);
+  let kcal = numero(document.getElementById("nuevoKcal").value);
+  let fibra = numero(document.getElementById("nuevoFibra").value);
+  if (nombre === "") { alert("Escribí el nombre del alimento."); return; }
+  if (buscarItem(nombre)) { alert("Ya existe un alimento o plato con ese nombre. Usá otro nombre."); return; }
+  if (isNaN(base) || base <= 0) { alert("Escribí para cuántos gramos son los valores (por ejemplo 100 o el peso de la porción)."); return; }
+  if (isNaN(prot) || isNaN(carb) || isNaN(grasa)) { alert("Completá proteínas, carbohidratos y grasas (si no tiene, poné 0)."); return; }
+  if (isNaN(kcal)) kcal = prot * 4 + carb * 4 + grasa * 9;
+  if (isNaN(fibra)) fibra = 0;
+  if (prot < 0 || carb < 0 || grasa < 0 || kcal < 0 || fibra < 0) { alert("Los valores no pueden ser negativos."); return; }
+  if (prot + carb + grasa + fibra > base) { alert("Los macros no pueden pesar más que el alimento (" + formato(base) + " g). Revisá los valores."); return; }
+  // Se guarda por 100 g (así lo usa el resto del programa) y los gramos de referencia para mostrarlo como lo cargaste
+  let f = 100 / base;
+  misAlimentos.push({ nombre: nombre, base: base, kcal: kcal * f, prot: prot * f, carb: carb * f, grasa: grasa * f, fibra: fibra * f });
+  guardarTodo();
+  for (let id of ["Nombre", "Kcal", "Prot", "Carb", "Grasa", "Fibra"]) document.getElementById("nuevo" + id).value = "";
+  document.getElementById("nuevoBase").value = 100;
+  dibujarMisAlimentos();
+  dibujarLista();
+}
+
+function borrarAlimento(i) {
+  if (!confirm("¿Borrar \"" + misAlimentos[i].nombre + "\" de Mis alimentos? Lo que ya anotaste en tus días no cambia.")) return;
+  misAlimentos.splice(i, 1);
+  guardarTodo();
+  dibujarMisAlimentos();
+  dibujarLista();
+}
+
+function dibujarMisAlimentos() {
+  let caja = document.getElementById("listaMisAlimentos");
+  if (misAlimentos.length === 0) { caja.innerHTML = '<p class="vacio">Todavía no cargaste ningún alimento.</p>'; return; }
+  let html = "<table><tr><th>Alimento</th><th>Para (g)</th><th>kcal</th><th>Prot</th><th>Carb</th><th>Grasa</th><th>Fibra</th><th></th></tr>";
+  misAlimentos.forEach(function (m, i) {
+    let base = m.base || 100;
+    let f = base / 100;
+    html += "<tr><td>" + limpiar(m.nombre) + "</td><td>" + formato(base) + "</td><td>" + formato(m.kcal * f) + "</td><td>" + formato(m.prot * f) + "</td><td>" + formato(m.carb * f) +
+      "</td><td>" + formato(m.grasa * f) + "</td><td>" + formato(m.fibra * f) + '</td><td><button class="borrar" title="Borrar" onclick="borrarAlimento(' + i + ')">×</button></td></tr>';
+  });
+  caja.innerHTML = html + "</table>";
+}
+
+// ---------- Metas y resumen ----------
+function dibujarMetas() {
+  let aviso = document.getElementById("avisoMetas");
+  if (aviso) aviso.textContent = metasVacias() ? (notaMetas || "Tus metas están en 0. Completá tu perfil en Cuenta > Mi perfil o escribilas a mano.") : notaMetas;
+  let par = (usuario && usuario.objetivoMetas ? usuario.objetivoMetas : usuario ? usuario.perfil.fase + "|" + usuario.perfil.prioridad : "|").split("|");
+  let lineaObj = document.getElementById("objetivoActual");
+  if (lineaObj) lineaObj.textContent = fases[par[0]] && prioridades[par[1]] ? "Objetivo: " + etiquetaObjetivo(par[0], par[1]) : "";
+  let html = "";
+  for (let m of macros) {
+    html += '<div><label for="meta-' + m.clave + '">' + m.texto + " (" + m.unidad + ')</label>' +
+      '<input type="number" min="0" id="meta-' + m.clave + '" value="' + metas[m.clave] + '" oninput="cambiarMeta(\'' + m.clave + '\')"></div>';
+  }
+  document.getElementById("metas").innerHTML = html;
+}
+
+function cambiarMeta(clave) {
+  let valor = numero(document.getElementById("meta-" + clave).value);
+  metas[clave] = isNaN(valor) ? 0 : valor;
+  guardarTodo();
+  dibujarResumen();
+  dibujarHistorial();
+}
+
+function comidasDelDia() {
+  return dias[document.getElementById("fecha").value] || [];
+}
+
+function dibujarResumen() {
+  let total = sumar(comidasDelDia());
+  let html = "";
+  for (let m of macros) {
+    let meta = metas[m.clave];
+    let estado = "Sin meta";
+    let porcentaje = 0;
+    let clase = "";
+    let textoPorc = "";
+    if (meta > 0) {
+      porcentaje = total[m.clave] / meta * 100;
+      textoPorc = Math.round(porcentaje) + "%";
+      if (porcentaje >= 90 && porcentaje <= 100) clase = "casi";
+      let diferencia = Math.abs(meta - total[m.clave]);
+      if (total[m.clave] <= meta) {
+        estado = "Faltan " + formato(diferencia) + " " + m.unidad;
+      } else {
+        estado = "Superaste la meta por " + formato(diferencia) + " " + m.unidad;
+        clase = "pasado";
+      }
+    }
+    html += '<div class="dato"><div class="nombre">' + m.texto + '</div>' +
+      '<div class="valor">' + formato(total[m.clave]) + ' <small>/ ' + (meta > 0 ? formato(meta) : "-") + " " + m.unidad + '</small></div>' +
+      '<div class="barra"><div class="' + clase + '" style="width:' + Math.min(porcentaje, 100) + '%"></div></div>' +
+      '<div class="estado"><span class="porcentaje">' + textoPorc + '</span> ' + estado + '</div></div>';
+  }
+  document.getElementById("resumen").innerHTML = html;
+}
+
+// ---------- Comidas del día (separadas por tipo) ----------
+function agregarComida() {
+  let item = buscarItem(document.getElementById("buscarComida").value);
+  let gramos = numero(document.getElementById("gramosComida").value);
+  if (!item) { alert("Elegí un alimento o plato de la lista. Si no está, cargalo en Mis alimentos."); return; }
+  if (isNaN(gramos) || gramos <= 0) { alert("Escribí los gramos."); return; }
+
+  let fecha = document.getElementById("fecha").value;
+  if (!dias[fecha]) dias[fecha] = [];
+  let comida = calcular(item, gramos);
+  comida.nombre = item.nombre;
+  comida.gramos = gramos;
+  comida.tipo = document.getElementById("tipoComida").value;
+  dias[fecha].push(comida);
+  guardarTodo();
+
+  document.getElementById("buscarComida").value = "";
+  document.getElementById("gramosComida").value = "";
+  dibujarTodo();
+}
+
+function borrarComida(i) {
+  dias[document.getElementById("fecha").value].splice(i, 1);
+  guardarTodo();
+  dibujarTodo();
+}
+
+function editarGramos(i, texto) {
+  let nuevo = numero(texto);
+  let comida = dias[document.getElementById("fecha").value][i];
+  if (!isNaN(nuevo) && nuevo > 0) {
+    let factor = nuevo / comida.gramos;
+    for (let m of macros) comida[m.clave] *= factor;
+    comida.gramos = nuevo;
+    guardarTodo();
+  }
+  dibujarTodo();
+}
+
+function dibujarComidas() {
+  let dia = comidasDelDia().map(function (x, i) { return { ...x, idx: i }; });
+  let html = "";
+  for (let t of tipos) {
+    let lista = dia.filter(function (x) { return (x.tipo || "Otros") === t; });
+    if (lista.length > 0) {
+      html += "<h3>" + t + "</h3>" + '<div class="tabla-scroll">' + tabla(lista, "borrarComida", "editarGramos", "Subtotal") + "</div>";
+    }
+  }
+  document.getElementById("tablaComidas").innerHTML = html || '<p class="vacio">Todavía no anotaste nada este día.</p>';
+}
+
+// ---------- Favoritos ----------
+function guardarFavorito() {
+  let item = buscarItem(document.getElementById("buscarComida").value);
+  if (!item) { alert("Elegí un alimento o plato de la lista y después tocá la estrella."); return; }
+  if (!favoritos.includes(item.nombre)) favoritos.push(item.nombre);
+  guardarTodo();
+  dibujarFavoritos();
+}
+
+function usarFavorito(i) {
+  document.getElementById("buscarComida").value = favoritos[i];
+  document.getElementById("gramosComida").focus();
+}
+
+function quitarFavorito(i) {
+  favoritos.splice(i, 1);
+  guardarTodo();
+  dibujarFavoritos();
+}
+
+function dibujarFavoritos() {
+  if (favoritos.length === 0) {
+    document.getElementById("favoritos").innerHTML = "";
+    return;
+  }
+  let html = "";
+  favoritos.forEach(function (n, i) {
+    html += '<span class="chip"><button onclick="usarFavorito(' + i + ')">' + limpiar(n) + '</button>' +
+      '<button class="borrar" title="Quitar" onclick="quitarFavorito(' + i + ')">×</button></span>';
+  });
+  document.getElementById("favoritos").innerHTML = html;
+}
+
+// ---------- Historial semanal y mensual ----------
+function cambiarModo(nuevo) {
+  modo = nuevo;
+  dibujarHistorial();
+}
+
+function fechasDelPeriodo() {
+  let base = new Date(document.getElementById("fecha").value + "T12:00:00");
+  let fechas = [];
+  if (modo === "semana") {
+    for (let i = 6; i >= 0; i--) {
+      let d = new Date(base);
+      d.setDate(base.getDate() - i);
+      fechas.push(textoFecha(d));
+    }
+  } else {
+    let cantidad = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+    for (let i = 1; i <= cantidad; i++) fechas.push(textoFecha(new Date(base.getFullYear(), base.getMonth(), i)));
+  }
+  return fechas;
+}
+
+function dibujarHistorial() {
+  document.getElementById("btnSemana").className = modo === "semana" ? "activo" : "";
+  document.getElementById("btnMes").className = modo === "mes" ? "activo" : "";
+
+  let filas = [];
+  let maximo = metas.kcal;
+  for (let f of fechasDelPeriodo()) {
+    if (dias[f] && dias[f].length > 0) {
+      let t = sumar(dias[f]);
+      t.fecha = f;
+      filas.push(t);
+      if (t.kcal > maximo) maximo = t.kcal;
+    }
+  }
+  if (filas.length === 0) {
+    document.getElementById("historial").innerHTML = '<p class="vacio">No hay comidas anotadas en este período.</p>';
+    return;
+  }
+
+  let html = '<table><tr><th>Día</th><th>kcal</th><th>Prot</th><th>Carb</th><th>Grasa</th><th>Fibra</th><th style="width:25%"></th></tr>';
+  for (let t of filas) {
+    let clase = metas.kcal > 0 && t.kcal > metas.kcal ? "pasado" : "";
+    html += "<tr><td>" + t.fecha.slice(8) + "/" + t.fecha.slice(5, 7) + "</td>";
+    for (let m of macros) html += "<td>" + formato(t[m.clave]) + "</td>";
+    html += '<td><div class="barra"><div class="' + clase + '" style="width:' + (t.kcal / maximo * 100) + '%"></div></div></td></tr>';
+  }
+  let suma = sumar(filas);
+  html += '<tr class="total"><td>Promedio</td>';
+  for (let m of macros) html += "<td>" + formato(suma[m.clave] / filas.length) + "</td>";
+  html += "<td></td></tr></table>";
+  html += '<p class="nota">Promedio de ' + filas.length + " día(s) con comidas anotadas. Total del período: " + formato(suma.kcal) + " kcal.</p>";
+  document.getElementById("historial").innerHTML = html;
+}
+
+// ---------- Crear platos ----------
+function agregarIngrediente() {
+  let item = buscarItem(document.getElementById("buscarIngrediente").value);
+  let gramos = numero(document.getElementById("gramosIngrediente").value);
+  if (!item) { alert("Elegí un ingrediente de la lista."); return; }
+  if (isNaN(gramos) || gramos <= 0) { alert("Escribí los gramos."); return; }
+
+  let ingrediente = calcular(item, gramos);
+  ingrediente.nombre = item.nombre;
+  ingrediente.gramos = gramos;
+  ingredientes.push(ingrediente);
+
+  document.getElementById("buscarIngrediente").value = "";
+  document.getElementById("gramosIngrediente").value = "";
+  dibujarIngredientes();
+}
+
+function quitarIngrediente(i) {
+  ingredientes.splice(i, 1);
+  dibujarIngredientes();
+}
+
+function dibujarIngredientes() {
+  document.getElementById("tablaIngredientes").innerHTML = tabla(ingredientes, "quitarIngrediente", "", "Total");
+}
+
+function guardarPlato() {
+  let nombre = document.getElementById("nombrePlato").value.trim();
+  if (nombre === "") { alert("Ponele un nombre al plato."); return; }
+  if (ingredientes.length === 0) { alert("Agregá al menos un ingrediente."); return; }
+
+  let total = sumar(ingredientes);
+  let gramosTotales = 0;
+  for (let i of ingredientes) gramosTotales += i.gramos;
+  let pesoFinal = numero(document.getElementById("pesoFinal").value);
+  if (!isNaN(pesoFinal) && pesoFinal > 0) gramosTotales = pesoFinal;
+
+  let por100 = {};
+  for (let m of macros) por100[m.clave] = total[m.clave] / gramosTotales * 100;
+
+  platos.push({ nombre: nombre, gramos: gramosTotales, kcal: total.kcal, por100: por100 });
+  guardarTodo();
+
+  ingredientes = [];
+  document.getElementById("nombrePlato").value = "";
+  document.getElementById("pesoFinal").value = "";
+  dibujarIngredientes();
+  dibujarPlatos();
+  dibujarLista();
+}
+
+function borrarPlato(i) {
+  platos.splice(i, 1);
+  guardarTodo();
+  dibujarPlatos();
+  dibujarLista();
+}
+
+function dibujarPlatos() {
+  if (platos.length === 0) {
+    document.getElementById("listaPlatos").innerHTML = '<p class="vacio">Todavía no creaste platos.</p>';
+    return;
+  }
+  let html = "";
+  platos.forEach(function (p, i) {
+    html += '<div class="plato"><div>' + limpiar(p.nombre) + ' <span>(' + formato(p.gramos) + " g, " + formato(p.kcal) +
+      ' kcal en total)</span></div><button class="borrar" title="Borrar plato" onclick="borrarPlato(' + i + ')">×</button></div>';
+  });
+  document.getElementById("listaPlatos").innerHTML = html;
+}
+
+// ---------- Dibujar todo ----------
+function dibujarLista() {
+  let html = "";
+  for (let i of todosLosItems()) html += '<option value="' + limpiar(i.nombre) + '">';
+  document.getElementById("listaAlimentos").innerHTML = html;
+}
+
+function dibujarTodo() {
+  dibujarResumen();
+  dibujarComidas();
+  dibujarHistorial();
+}
+
+document.getElementById("fecha").value = textoFecha(new Date());
+// Quien ya tenía cuenta ya conoce la app: no se le muestra la guía.
+if (hayCuenta()) marcarGuiaVista();
+viendoGuia = !guiaVista();
+dibujarGuia();
+if (hayCuenta()) elegirUsuario(datos.actual); else mostrarPantalla();
+</script>
+</body>
+</html>
