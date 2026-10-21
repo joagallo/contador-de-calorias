@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Contador de calorías</title>
+<meta name="theme-color" content="#171a21">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" crossorigin="anonymous"></script>
 <style>
   :root {
     --fondo: #171a21;
@@ -131,6 +135,17 @@
   .aviso { color: var(--acento); font-size: 13px; margin: 8px 0 0; }
   .resumen-perfil { margin: 0 0 12px; font-size: 14px; }
 
+  /* Cuenta en la nube */
+  .estado-nube { margin: 2px 0 0; }
+  .estado-nube.error { color: var(--alerta); }
+  .login { max-width: 420px; margin-left: auto; margin-right: auto; }
+  .login input { width: 100%; }
+  .login .google { width: 100%; }
+  .separador { text-align: center; color: var(--suave); font-size: 13px; margin: 14px 0; }
+  .enlace { background: none; border: none; color: var(--acento); padding: 0; text-decoration: underline; font-size: inherit; }
+  .error-login { color: var(--alerta); font-size: 13px; margin: 8px 0 0; }
+  .fila select.unidad { width: auto; }
+
   .oculto { display: none; }
 </style>
 </head>
@@ -140,15 +155,18 @@
   <div class="encabezado">
     <div>
       <h1>Contador de calorías</h1>
+      <p id="estadoNube" class="nota estado-nube"></p>
     </div>
     <div id="menuCuenta" class="menu-cuenta oculto">
       <button onclick="abrirMenuCuenta(event)">Cuenta</button>
       <div id="opcionesCuenta" class="opciones oculto">
-        <p class="nota">Cuenta: <b id="nombreActual"></b></p>
+        <p class="nota">Cuenta: <b id="nombreActual"></b><br><span id="correoActual"></span></p>
         <button onclick="cerrarMenuCuenta(); abrirPerfil()">Mi perfil</button>
+        <button onclick="cerrarMenuCuenta(); sincronizarNube(true)">Sincronizar ahora</button>
         <button onclick="cerrarMenuCuenta(); exportar()">Exportar respaldo</button>
         <button onclick="cerrarMenuCuenta(); document.getElementById('archivo').click()">Importar respaldo</button>
-        <button class="peligro" onclick="cerrarMenuCuenta(); borrarCuenta()">Borrar cuenta</button>
+        <button onclick="cerrarMenuCuenta(); cerrarSesion()">Cerrar sesión</button>
+        <button class="peligro" onclick="cerrarMenuCuenta(); borrarCuenta()">Borrar cuenta y datos</button>
       </div>
     </div>
   </div>
@@ -168,13 +186,25 @@
     </div>
   </div>
 
-  <div id="pantallaCuenta" class="tarjeta oculto">
-    <h2>Creá tu cuenta</h2>
-    <div class="fila">
-      <input class="crece" id="nombreCuenta" placeholder="Tu nombre" onkeydown="if (event.key === 'Enter') crearCuenta()">
-      <button class="principal" onclick="crearCuenta()">Crear cuenta</button>
+  <div id="pantallaCarga" class="tarjeta login">
+    <h2>Cargando…</h2>
+    <p class="nota" id="textoCarga">Conectando con tu cuenta.</p>
+    <div class="fila oculto" id="filaReintentar"><button class="principal" onclick="reintentarCarga()">Reintentar</button></div>
+  </div>
+
+  <div id="pantallaCuenta" class="tarjeta login oculto">
+    <h2>Entrá a tu cuenta</h2>
+    <button class="principal google" onclick="entrarGoogle()">Entrar con Google</button>
+    <p class="separador">o con correo y contraseña</p>
+    <input type="email" id="loginCorreo" placeholder="Correo" autocomplete="email">
+    <input type="password" id="loginClave" placeholder="Contraseña (mínimo 6 caracteres)" autocomplete="current-password" style="margin-top:8px" onkeydown="if (event.key === 'Enter') entrarCorreo()">
+    <div class="fila" style="margin-top:12px">
+      <button class="principal" onclick="entrarCorreo()">Entrar</button>
+      <button onclick="crearCuentaCorreo()">Crear cuenta</button>
     </div>
-    <p class="nota">Se guarda solo en este navegador. Solo podés tener una cuenta a la vez.</p>
+    <button class="enlace" onclick="olvideClave()">Olvidé mi contraseña</button>
+    <p class="error-login" id="errorLogin"></p>
+    <p class="nota">Tus datos se guardan en tu cuenta, así que los ves desde cualquier dispositivo entrando con el mismo método.</p>
   </div>
 
   <div id="pantallaPerfil" class="oculto">
@@ -241,11 +271,13 @@
       <select id="tipoComida">
         <option>Desayuno</option><option>Almuerzo</option><option>Merienda</option><option>Cena</option><option>Otros</option>
       </select>
-      <input class="crece" id="buscarComida" list="listaAlimentos" placeholder="Buscar alimento o plato...">
-      <input class="gramos" id="gramosComida" type="number" min="0" placeholder="Gramos">
+      <input class="crece" id="buscarComida" list="listaAlimentos" placeholder="Buscar alimento o plato..." oninput="refrescarUnidad('Comida')">
+      <input class="gramos" id="gramosComida" type="number" min="0" step="any" placeholder="Gramos">
+      <select class="unidad" id="unidadComida" onchange="refrescarUnidad('Comida')"><option value="g">gramos</option><option value="u">unidades</option></select>
       <button onclick="guardarFavorito()" title="Guardar como favorito">☆</button>
       <button class="principal" onclick="agregarComida()">Agregar</button>
     </div>
+    <p class="nota" id="notaUnidadComida"></p>
     <div id="tablaComidas"></div>
   </div>
 
@@ -258,28 +290,33 @@
     <div class="tabla-scroll" id="historial"></div>
   </div>
 
-  <div class="tarjeta">
-    <h2>Crear un plato</h2>
+  <div class="tarjeta" id="tarjetaPlato">
+    <h2 id="tituloPlato">Crear un plato</h2>
     <div class="fila">
       <input class="crece" id="nombrePlato" placeholder="Nombre del plato (ej: Arroz con pollo)">
     </div>
     <div class="fila">
-      <input class="crece" id="buscarIngrediente" list="listaAlimentos" placeholder="Buscar ingrediente...">
-      <input class="gramos" id="gramosIngrediente" type="number" min="0" placeholder="Gramos">
+      <input class="crece" id="buscarIngrediente" list="listaAlimentos" placeholder="Buscar ingrediente..." oninput="refrescarUnidad('Ingrediente')">
+      <input class="gramos" id="gramosIngrediente" type="number" min="0" step="any" placeholder="Gramos">
+      <select class="unidad" id="unidadIngrediente" onchange="refrescarUnidad('Ingrediente')"><option value="g">gramos</option><option value="u">unidades</option></select>
       <button onclick="agregarIngrediente()">Agregar ingrediente</button>
     </div>
+    <p class="nota" id="notaUnidadIngrediente"></p>
     <div class="tabla-scroll" id="tablaIngredientes"></div>
     <div class="fila" style="margin-top:12px">
       <input style="width:200px" id="pesoFinal" type="number" min="0" placeholder="Peso final (opcional)">
-      <button class="principal" onclick="guardarPlato()">Guardar plato</button>
+      <input style="width:200px" id="porcionesPlato" type="number" min="0" step="any" placeholder="Porciones (opcional)">
+      <button class="principal" id="btnGuardarPlato" onclick="guardarPlato()">Guardar plato</button>
+      <button class="oculto" id="btnCancelarPlato" onclick="cancelarEdicionPlato()">Cancelar</button>
     </div>
-    <p class="nota">Peso final: si el plato ya cocinado pesa distinto a la suma de los ingredientes, escribilo acá.</p>
+    <p class="nota">Peso final: si el plato ya cocinado pesa distinto a la suma de los ingredientes, escribilo acá. Porciones: si decís en cuántas porciones se divide, después lo podés anotar por porción.</p>
+    <p class="nota oculto" id="notaEdicionPlato">Este plato se creó antes de poder editar ingredientes: acá podés cambiar el nombre, el peso final y las porciones. Para cambiar los ingredientes, armalo de nuevo y borrá este.</p>
     <h2 style="margin-top:20px">Mis platos</h2>
     <div id="listaPlatos"></div>
   </div>
 
-  <div class="tarjeta">
-    <h2>Mis alimentos</h2>
+  <div class="tarjeta" id="tarjetaAlimentos">
+    <h2 id="tituloAlimentos">Mis alimentos</h2>
     <div class="fila">
       <input class="crece" id="nuevoNombre" placeholder="Nombre (ej: Barrita de cereal X)">
     </div>
@@ -290,8 +327,12 @@
       <div><label for="nuevoCarb">Carbohidratos (g)</label><input type="number" min="0" id="nuevoCarb"></div>
       <div><label for="nuevoGrasa">Grasas (g)</label><input type="number" min="0" id="nuevoGrasa"></div>
       <div><label for="nuevoFibra">Fibra (g)</label><input type="number" min="0" id="nuevoFibra" placeholder="Opcional"></div>
+      <div><label for="nuevoUnidadG">1 unidad pesa (g)</label><input type="number" min="0" step="any" id="nuevoUnidadG" placeholder="Opcional"></div>
     </div>
-    <div class="fila"><button class="principal" onclick="guardarAlimento()">Guardar alimento</button></div>
+    <div class="fila">
+      <button class="principal" id="btnGuardarAlimento" onclick="guardarAlimento()">Guardar alimento</button>
+      <button class="oculto" id="btnCancelarAlimento" onclick="cancelarEdicionAlimento()">Cancelar</button>
+    </div>
     <div class="tabla-scroll" id="listaMisAlimentos"></div>
   </div>
 
@@ -664,7 +705,7 @@ const macros = [
 const tipos = ["Desayuno", "Almuerzo", "Merienda", "Cena", "Otros"];
 const camposPerfil = ["edad", "sexo", "peso", "altura", "actividad", "fase", "prioridad", "grasaCorp"];
 
-// ---------- Guardado en el navegador ----------
+// ---------- Guardado: en este dispositivo y en la nube ----------
 function leer(clave, porDefecto) {
   try {
     let guardado = localStorage.getItem(clave);
@@ -673,9 +714,32 @@ function leer(clave, porDefecto) {
   return porDefecto;
 }
 
-function guardarTodo() {
-  try { localStorage.setItem("datosContador", JSON.stringify(datos)); } catch (e) {}
-}
+// Configuración de tu proyecto de Firebase. No es secreta: la seguridad la dan las reglas de Firestore.
+const firebaseConfig = {
+  apiKey: "AIzaSyAUAEaJopMFPeSOnEsskJWmF0L15vQVxBI",
+  authDomain: "contador-calorias-967f5.firebaseapp.com",
+  projectId: "contador-calorias-967f5",
+  storageBucket: "contador-calorias-967f5.firebasestorage.app",
+  messagingSenderId: "564444011885",
+  appId: "1:564444011885:web:538b43c130b81c13188e64"
+};
+let auth = null, db = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+} catch (e) { auth = null; db = null; }
+
+let uid = null;          // quién tiene la sesión abierta
+let claveCache = "";     // copia de tus datos en este dispositivo
+let versionDatos = 0;    // sube con cada cambio, para saber si hubo cambios mientras se subía
+let ultimoMain = "";     // cómo está hoy el documento principal en la nube
+let ultimosMeses = {};   // cómo está hoy cada mes en la nube
+let temporizador = null;
+let subiendo = false;
+let entrando = false;
+let cargando = true;
+let ultimaSync = 0;
 
 function nuevoUsuario() {
   return {
@@ -683,35 +747,19 @@ function nuevoUsuario() {
     perfilListo: false,
     historial: [],
     metas: { kcal: 0, prot: 0, carb: 0, grasa: 0, fibra: 0 },
-    platos: [], favoritos: [], dias: {}, misAlimentos: []
+    platos: [], favoritos: [], dias: {}, misAlimentos: [], unidades: []
   };
 }
 
-let datos = leer("datosContador", null);
-if (!datos) {
-  datos = { actual: "", usuarios: {} };
-  // Si había datos de la versión 1 (sin cuentas), pasan a la cuenta "Yo"
-  if (leer("dias", null)) {
-    let primero = nuevoUsuario();
-    primero.metas = leer("metas", primero.metas);
-    primero.platos = leer("platos", []);
-    primero.dias = leer("dias", {});
-    datos = { actual: "Yo", usuarios: { Yo: primero } };
-  }
-}
-// Una sola cuenta a la vez: si había varias, queda la actual
-if (Object.keys(datos.usuarios).length > 1 && datos.usuarios[datos.actual]) {
-  let unica = {};
-  unica[datos.actual] = datos.usuarios[datos.actual];
-  datos.usuarios = unica;
-}
-
+let datos = { actual: "", usuarios: {} };
 let usuario, metas, platos, dias, favoritos, misAlimentos;
 let ingredientes = [];
 let modo = "semana";
 let paso = 0;
 let viendoGuia = false;
 let viendoPerfil = false;
+let editandoPlato = null;
+let editandoAlimento = null;
 
 // ---------- Funciones útiles ----------
 function formato(n) {
@@ -775,7 +823,8 @@ function tabla(lista, borrar, editar, etiquetaTotal) {
     if (editar) {
       celdaGramos = '<input class="mini" type="number" min="1" value="' + x.gramos + '" onchange="' + editar + '(' + pos + ', this.value)">';
     }
-    html += "<tr><td>" + limpiar(x.nombre) + "</td><td>" + celdaGramos + "</td><td>" + formato(x.kcal) +
+    let detalle = x.cantidad ? ' <span class="dif">(' + formato(x.cantidad) + " " + limpiar(x.unidad) + ")</span>" : "";
+    html += "<tr><td>" + limpiar(x.nombre) + detalle + "</td><td>" + celdaGramos + "</td><td>" + formato(x.kcal) +
       "</td><td>" + formato(x.prot) + "</td><td>" + formato(x.carb) + "</td><td>" + formato(x.grasa) +
       "</td><td>" + formato(x.fibra) + '</td><td><button class="borrar" title="Quitar" onclick="' + borrar + '(' + pos + ')">×</button></td></tr>';
   });
@@ -829,6 +878,11 @@ function elegirUsuario(nombre) {
   dias = usuario.dias;
   favoritos = usuario.favoritos;
   ingredientes = [];
+  if (!Array.isArray(usuario.unidades)) usuario.unidades = [];
+  editandoPlato = null;
+  editandoAlimento = null;
+  limpiarFormPlato();
+  limpiarFormAlimento();
   guardarTodo();
   dibujarNombre();
   dibujarPerfil();
@@ -849,38 +903,347 @@ function hayCuenta() {
 
 function dibujarNombre() {
   document.getElementById("nombreActual").textContent = datos.actual;
+  let correo = auth && auth.currentUser && auth.currentUser.email ? auth.currentUser.email : "";
+  document.getElementById("correoActual").textContent = correo;
 }
 
-function crearCuenta() {
-  let nombre = document.getElementById("nombreCuenta").value.trim();
-  if (nombre === "") { alert("Escribí un nombre para la cuenta."); return; }
-  datos = { actual: nombre, usuarios: {} };
-  datos.usuarios[nombre] = nuevoUsuario();
-  document.getElementById("nombreCuenta").value = "";
-  viendoGuia = false;
-  viendoPerfil = false;
-  elegirUsuario(nombre);
+// ----- Ayudas de la nube -----
+function conTiempo(promesa, ms) {
+  return new Promise(function (ok, mal) {
+    let t = setTimeout(function () { mal(new Error("tiempo")); }, ms);
+    promesa.then(function (v) { clearTimeout(t); ok(v); }, function (e) { clearTimeout(t); mal(e); });
+  });
 }
 
-function borrarCuenta() {
-  if (!confirm("¿Borrar la cuenta " + datos.actual + " y todos sus datos? Después vas a poder crear una nueva.")) return;
+function limpio(x) { return JSON.parse(JSON.stringify(x)); }
+
+// Texto igual para el mismo contenido, sin importar el orden de las claves
+function estable(v) {
+  if (Array.isArray(v)) return "[" + v.map(estable).join(",") + "]";
+  if (v && typeof v === "object") {
+    return "{" + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; })
+      .map(function (k) { return JSON.stringify(k) + ":" + estable(v[k]); }).join(",") + "}";
+  }
+  return JSON.stringify(v);
+}
+
+function mostrarEstado(texto, error) {
+  let e = document.getElementById("estadoNube");
+  e.textContent = texto;
+  e.className = "nota estado-nube" + (error ? " error" : "");
+}
+
+function hayPendiente() {
+  try { return !!uid && localStorage.getItem("pend_" + uid) === "1"; } catch (e) { return false; }
+}
+
+function marcarPendiente(si) {
+  try {
+    if (si) localStorage.setItem("pend_" + uid, "1"); else localStorage.removeItem("pend_" + uid);
+  } catch (e) {}
+}
+
+// Cada cambio se guarda en este dispositivo al instante y se sube a la nube enseguida
+function guardarTodo() {
+  if (!uid || !hayCuenta()) return;
+  versionDatos++;
+  try { localStorage.setItem(claveCache, JSON.stringify(datos)); } catch (e) {}
+  marcarPendiente(true);
+  mostrarEstado("Guardando…", false);
+  programarNube(1200);
+}
+
+function programarNube(espera) {
+  clearTimeout(temporizador);
+  temporizador = setTimeout(subirNube, espera === undefined ? 1200 : espera);
+}
+
+// En la nube: un documento con tu perfil, metas, platos y alimentos, y un documento por mes con tus comidas
+async function subirNube() {
+  if (!uid || !db || !hayCuenta()) return;
+  if (subiendo) { programarNube(1500); return; }
+  subiendo = true;
+  let version = versionDatos;
+  try {
+    let u = datos.usuarios[datos.actual];
+    let resto = {};
+    for (let k of Object.keys(u)) if (k !== "dias") resto[k] = u[k];
+    resto = limpio(resto);
+    let porMes = {};
+    for (let f of Object.keys(u.dias || {})) {
+      let mes = f.slice(0, 7);
+      if (!porMes[mes]) porMes[mes] = {};
+      porMes[mes][f] = u.dias[f];
+    }
+    porMes = limpio(porMes);
+    let ref = db.collection("usuarios").doc(uid);
+    let lote = db.batch();
+    let cambios = 0;
+    let textoMain = estable(resto);
+    if (textoMain !== ultimoMain) { lote.set(ref, resto); cambios++; }
+    let textosMeses = {};
+    for (let mes of Object.keys(porMes)) {
+      textosMeses[mes] = estable(porMes[mes]);
+      if (textosMeses[mes] !== ultimosMeses[mes]) { lote.set(ref.collection("meses").doc(mes), { dias: porMes[mes] }); cambios++; }
+    }
+    for (let mes of Object.keys(ultimosMeses)) {
+      if (!(mes in porMes)) { lote.delete(ref.collection("meses").doc(mes)); cambios++; }
+    }
+    if (cambios > 0) await conTiempo(lote.commit(), 15000);
+    ultimoMain = textoMain;
+    ultimosMeses = textosMeses;
+    if (version === versionDatos) {
+      marcarPendiente(false);
+      mostrarEstado("Guardado en la nube", false);
+    } else {
+      programarNube(500);
+    }
+  } catch (e) {
+    if (e && e.code === "permission-denied") {
+      mostrarEstado("No se pudo guardar en la nube: faltan publicar las reglas de Firestore. Tus datos quedan en este dispositivo.", true);
+    } else {
+      mostrarEstado("Sin conexión: tus cambios quedan en este dispositivo y se suben solos cuando vuelva internet.", true);
+    }
+    programarNube(20000);
+  } finally {
+    subiendo = false;
+  }
+}
+
+// Trae tus datos de la nube. Devuelve null si todavía no hay nada guardado.
+async function traerDeNube() {
+  let ref = db.collection("usuarios").doc(uid);
+  let r = await conTiempo(Promise.all([ref.get(), ref.collection("meses").get()]), 12000);
+  let doc = r[0], meses = r[1];
+  let diasNube = {};
+  let textos = {};
+  meses.forEach(function (d) {
+    let delMes = d.data().dias || {};
+    textos[d.id] = estable(limpio(delMes));
+    Object.assign(diasNube, delMes);
+  });
+  ultimosMeses = textos;
+  if (!doc.exists) { ultimoMain = ""; return null; }
+  let u = doc.data();
+  ultimoMain = estable(limpio(u));
+  u.dias = diasNube;
+  return u;
+}
+
+// Vuelve a mirar la nube (por ejemplo, si cargaste algo desde otro dispositivo)
+async function sincronizarNube(manual) {
+  if (!uid || !db || !hayCuenta() || cargando) return;
+  if (!manual && (viendoPerfil || editandoPlato !== null || editandoAlimento !== null || ingredientes.length > 0)) return;
+  clearTimeout(temporizador);
+  await subirNube();
+  if (hayPendiente()) { if (manual) alert("No pude conectar con la nube. Tus cambios siguen guardados en este dispositivo."); return; }
+  let remoto;
+  try { remoto = await traerDeNube(); } catch (e) { if (manual) alert("No pude conectar con la nube."); return; }
+  if (!remoto) return;
+  let local = datos.usuarios[datos.actual];
+  if (estable(limpio(remoto)) === estable(limpio(local))) { if (manual) alert("Ya estás al día."); return; }
+  let y = window.scrollY;
+  datos.usuarios[datos.actual] = remoto;
+  elegirUsuario(datos.actual);
+  window.scrollTo(0, y);
+  if (manual) alert("Se actualizó con los datos de tu cuenta.");
+}
+
+function nombreDe(user) {
+  if (user.displayName) return user.displayName.trim().split(" ")[0];
+  if (user.email) return user.email.split("@")[0];
+  return "Yo";
+}
+
+// Si en este navegador había datos de la versión anterior (sin nube), ofrece pasarlos a la cuenta
+function datosViejosDelNavegador() {
+  let v = leer("datosContador", null);
+  if (!v || !v.usuarios) return null;
+  let k = v.usuarios[v.actual] ? v.actual : Object.keys(v.usuarios)[0];
+  if (!k) return null;
+  let u = Object.assign(nuevoUsuario(), v.usuarios[k]);
+  let tieneAlgo = u.perfilListo || Object.keys(u.dias || {}).length > 0 || perfilCompleto(u.perfil || {});
+  if (!tieneAlgo) return null;
+  if (!confirm("Encontré datos guardados en este navegador (cuenta \"" + k + "\"). ¿Querés pasarlos a tu cuenta en la nube?\n\nAceptar: los paso a tu cuenta.\nCancelar: empezás con una cuenta vacía.")) return null;
+  return u;
+}
+
+async function entrarConUsuario(user) {
+  if (entrando) return;
+  entrando = true;
+  try {
+    uid = user.uid;
+    claveCache = "cache_" + uid;
+    cargando = true;
+    datos = { actual: "", usuarios: {} };
+    document.getElementById("textoCarga").textContent = "Cargando tus datos…";
+    document.getElementById("filaReintentar").className = "fila oculto";
+    mostrarPantalla();
+    let nombre = nombreDe(user);
+    let cache = leer(claveCache, null);
+    let delCache = null;
+    if (cache && cache.usuarios) {
+      let k = cache.usuarios[cache.actual] ? cache.actual : Object.keys(cache.usuarios)[0];
+      if (k) delCache = cache.usuarios[k];
+    }
+    let remoto = null, fallo = null;
+    try { remoto = await traerDeNube(); } catch (e) { fallo = e || new Error("fallo"); }
+    let elegido = null;
+    if (remoto) {
+      // Si quedaron cambios sin subir en este dispositivo, valen más que lo de la nube
+      elegido = hayPendiente() && delCache ? delCache : remoto;
+    } else if (delCache) {
+      elegido = delCache;
+    } else if (fallo) {
+      let sinReglas = fallo.code === "permission-denied";
+      document.getElementById("textoCarga").textContent = sinReglas
+        ? "La base de datos rechazó el acceso: faltan publicar las reglas de Firestore."
+        : "No pude conectar con la nube. Revisá tu conexión y probá de nuevo.";
+      document.getElementById("filaReintentar").className = "fila";
+      return;
+    } else {
+      elegido = datosViejosDelNavegador() || nuevoUsuario();
+    }
+    datos = { actual: nombre, usuarios: {} };
+    datos.usuarios[nombre] = elegido;
+    cargando = false;
+    viendoPerfil = false;
+    paso = 0;
+    if (elegido.perfilListo) marcarGuiaVista();
+    viendoGuia = !guiaVista();
+    dibujarGuia();
+    ultimaSync = Date.now();
+    elegirUsuario(nombre);
+  } finally {
+    entrando = false;
+  }
+}
+
+function reintentarCarga() {
+  if (auth && auth.currentUser) entrarConUsuario(auth.currentUser);
+}
+
+function quitarSesion() {
+  uid = null;
+  claveCache = "";
+  clearTimeout(temporizador);
+  ultimoMain = "";
+  ultimosMeses = {};
   datos = { actual: "", usuarios: {} };
-  guardarTodo();
-  paso = 0;
+  cargando = false;
   viendoPerfil = false;
+  paso = 0;
+  mostrarEstado("", false);
   viendoGuia = !guiaVista();
   dibujarGuia();
   mostrarPantalla();
 }
 
+async function cerrarSesion() {
+  await subirNube();
+  if (hayPendiente() && !confirm("Hay cambios que todavía no se subieron a la nube y se perderían en este dispositivo. ¿Cerrar sesión igual?")) return;
+  try { localStorage.removeItem(claveCache); } catch (e) {}
+  marcarPendiente(false);
+  await auth.signOut();
+}
+
+async function borrarCuenta() {
+  if (!confirm("¿Borrar tu cuenta y todos tus datos? Se borran de la nube y de este dispositivo, y no se puede deshacer.")) return;
+  clearTimeout(temporizador);
+  try {
+    let ref = db.collection("usuarios").doc(uid);
+    let meses = await conTiempo(ref.collection("meses").get(), 12000);
+    let lote = db.batch();
+    meses.forEach(function (d) { lote.delete(d.ref); });
+    lote.delete(ref);
+    await conTiempo(lote.commit(), 15000);
+  } catch (e) {
+    alert("No pude borrar los datos de la nube. Revisá tu conexión y probá de nuevo.");
+    return;
+  }
+  try { localStorage.removeItem(claveCache); } catch (e) {}
+  marcarPendiente(false);
+  uid = null;
+  let eliminado = true;
+  try { await auth.currentUser.delete(); } catch (e) { eliminado = false; }
+  if (!eliminado) {
+    alert("Tus datos se borraron. Para eliminar también el acceso, entrá de nuevo y repetí \"Borrar cuenta y datos\" (Firebase pide haber entrado hace poco).");
+    await auth.signOut();
+  }
+}
+
+// ----- Entrar -----
+function errorLogin(texto) {
+  document.getElementById("errorLogin").textContent = texto || "";
+}
+
+function textoErrorAuth(e) {
+  let c = e && e.code ? e.code : "";
+  let m = {
+    "auth/invalid-email": "El correo no es válido.",
+    "auth/missing-email": "Escribí tu correo.",
+    "auth/user-not-found": "No hay una cuenta con ese correo. Tocá Crear cuenta.",
+    "auth/wrong-password": "La contraseña no es correcta.",
+    "auth/invalid-credential": "Correo o contraseña incorrectos.",
+    "auth/email-already-in-use": "Ya hay una cuenta con ese correo. Tocá Entrar.",
+    "auth/weak-password": "La contraseña es muy corta: usá al menos 6 caracteres.",
+    "auth/too-many-requests": "Demasiados intentos. Esperá unos minutos y probá de nuevo.",
+    "auth/network-request-failed": "No hay conexión a internet.",
+    "auth/unauthorized-domain": "Este sitio no está autorizado en Firebase (Authentication > Configuración > Dominios autorizados).",
+    "auth/popup-blocked": "El navegador bloqueó la ventana de Google. Permitila o entrá con correo y contraseña.",
+    "auth/operation-not-allowed": "Ese método de acceso no está activado en Firebase."
+  };
+  if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return "";
+  return m[c] || ("No se pudo entrar (" + (c || "error") + ").");
+}
+
+const sinServicio = "No se pudo cargar el servicio de cuentas. Revisá tu conexión y recargá la página.";
+
+async function entrarGoogle() {
+  errorLogin("");
+  if (!auth) { errorLogin(sinServicio); return; }
+  try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); } catch (e) { errorLogin(textoErrorAuth(e)); }
+}
+
+function leerCorreoYClave() {
+  return { correo: document.getElementById("loginCorreo").value.trim(), clave: document.getElementById("loginClave").value };
+}
+
+async function entrarCorreo() {
+  errorLogin("");
+  if (!auth) { errorLogin(sinServicio); return; }
+  let d = leerCorreoYClave();
+  if (d.correo === "" || d.clave === "") { errorLogin("Escribí tu correo y tu contraseña."); return; }
+  try { await auth.signInWithEmailAndPassword(d.correo, d.clave); } catch (e) { errorLogin(textoErrorAuth(e)); }
+}
+
+async function crearCuentaCorreo() {
+  errorLogin("");
+  if (!auth) { errorLogin(sinServicio); return; }
+  let d = leerCorreoYClave();
+  if (d.correo === "" || d.clave === "") { errorLogin("Escribí el correo y una contraseña para crear tu cuenta."); return; }
+  try { await auth.createUserWithEmailAndPassword(d.correo, d.clave); } catch (e) { errorLogin(textoErrorAuth(e)); }
+}
+
+async function olvideClave() {
+  errorLogin("");
+  if (!auth) { errorLogin(sinServicio); return; }
+  let d = leerCorreoYClave();
+  if (d.correo === "") { errorLogin("Escribí tu correo arriba y volvé a tocar \"Olvidé mi contraseña\"."); return; }
+  try {
+    await auth.sendPasswordResetEmail(d.correo);
+    alert("Te mandé un correo para cambiar la contraseña. Si no lo ves, mirá en spam.");
+  } catch (e) { errorLogin(textoErrorAuth(e)); }
+}
+
 // ---------- Guía y pantallas ----------
 const pasosGuia = [
-  { titulo: "Bienvenido", texto: "Esta app calcula tus calorías y macronutrientes a partir de los gramos que comés. En unos pasos te muestro cómo usarla." },
-  { titulo: "Creá tu cuenta", texto: "Escribís tu nombre y listo. Solo podés tener una cuenta y se guarda en este navegador. Después cargás tus características (edad, sexo, peso, altura, actividad, fase y prioridad de entrenamiento), tocás Guardar y entrás a la app. Las podés actualizar cuando quieras desde Cuenta > Mi perfil, y queda un historial de tus medidas." },
-  { titulo: "Definí tus metas", texto: "Escribí tus metas diarias de calorías, proteínas, carbohidratos, grasas y fibra, Se calculan solas cuando guardás tu perfil, y las podés cambiar a mano." },
-  { titulo: "Anotá lo que comés", texto: "Elegí el tipo de comida (desayuno, almuerzo...), buscá el alimento, escribí los gramos y tocá Agregar. Si te equivocás, cambiá los gramos en la tabla. Con la estrella ☆ guardás favoritos." },
-  { titulo: "Creá tus platos", texto: "Armá un plato sumando ingredientes en gramos y guardalo. Después lo buscás como cualquier alimento y escribís cuántos gramos comiste. Si un alimento no está en la lista, cargalo en 'Mis alimentos' con los datos de la etiqueta." },
-  { titulo: "Mirá tu progreso", texto: "El resumen te muestra cuánto llevás y cuánto falta para cada meta. El historial junta los últimos 7 días o el mes. Exportá un respaldo de vez en cuando." }
+  { titulo: "Bienvenido", texto: "Esta app calcula tus calorías y macronutrientes a partir de lo que comés. En unos pasos te muestro cómo usarla." },
+  { titulo: "Entrá a tu cuenta", texto: "Entrás con Google o con un correo y una contraseña. Tus datos se guardan en tu cuenta, así que los ves igual desde el celular y desde la compu. La primera vez cargás tus características (edad, sexo, peso, altura, actividad, fase y prioridad de entrenamiento). Las podés actualizar cuando quieras desde Cuenta > Mi perfil, y queda un historial de tus medidas." },
+  { titulo: "Definí tus metas", texto: "Tus metas diarias de calorías, proteínas, carbohidratos, grasas y fibra se calculan solas cuando guardás tu perfil, y las podés cambiar a mano." },
+  { titulo: "Anotá lo que comés", texto: "Elegí el tipo de comida (desayuno, almuerzo...), buscá el alimento y escribí la cantidad: en gramos o en unidades (2 huevos, 1 banana). Tocá Agregar. Si te equivocás, cambiá los gramos en la tabla. Con la estrella ☆ guardás favoritos." },
+  { titulo: "Creá tus platos y alimentos", texto: "Armá un plato sumando ingredientes y guardalo. Si un alimento no está en la lista, cargalo en 'Mis alimentos' con los datos de la etiqueta. Los alimentos y los platos se pueden editar cuando quieras con el lápiz ✎." },
+  { titulo: "Mirá tu progreso", texto: "El resumen te muestra cuánto llevás y cuánto falta para cada meta. El historial junta los últimos 7 días o el mes. Todo se guarda solo en tu cuenta; además podés exportar un respaldo cuando quieras." }
 ];
 
 function dibujarGuia() {
@@ -894,7 +1257,7 @@ function dibujarGuia() {
   }
   document.getElementById("puntosPaso").innerHTML = puntos;
   let texto = "Siguiente";
-  if (paso === pasosGuia.length - 1) texto = hayCuenta() ? "Entrar a la app" : "Crear mi cuenta";
+  if (paso === pasosGuia.length - 1) texto = hayCuenta() ? "Entrar a la app" : "Entrar a mi cuenta";
   document.getElementById("btnSiguiente").textContent = texto;
 }
 
@@ -930,11 +1293,13 @@ function pasoGuia(cambio) {
 function mostrarPantalla() {
   let cuenta = hayCuenta();
   let perfilListo = cuenta && !!datos.usuarios[datos.actual].perfilListo;
-  let pedirPerfil = !viendoGuia && cuenta && (!perfilListo || viendoPerfil);
-  document.getElementById("pantallaGuia").className = "guia" + (viendoGuia ? "" : " oculto");
-  document.body.style.overflow = viendoGuia ? "hidden" : "";
-  document.getElementById("pantallaCuenta").className = "tarjeta" + (!viendoGuia && !cuenta ? "" : " oculto");
-  let verApp = !viendoGuia && cuenta && !pedirPerfil;
+  let verGuia = viendoGuia && !cargando;
+  let pedirPerfil = !verGuia && !cargando && cuenta && (!perfilListo || viendoPerfil);
+  document.getElementById("pantallaCarga").className = "tarjeta login" + (cargando ? "" : " oculto");
+  document.getElementById("pantallaGuia").className = "guia" + (verGuia ? "" : " oculto");
+  document.body.style.overflow = verGuia ? "hidden" : "";
+  document.getElementById("pantallaCuenta").className = "tarjeta login" + (!verGuia && !cargando && !cuenta ? "" : " oculto");
+  let verApp = !verGuia && !cargando && cuenta && !pedirPerfil;
   document.getElementById("pantallaPerfil").className = pedirPerfil ? "" : "oculto";
   document.getElementById("pantallaApp").className = verApp ? "" : "oculto";
   document.getElementById("menuCuenta").className = "menu-cuenta" + (verApp ? "" : " oculto");
@@ -962,10 +1327,11 @@ function importar(evento) {
     try {
       let nuevo = JSON.parse(lector.result);
       if (!nuevo.usuarios || Object.keys(nuevo.usuarios).length === 0) throw new Error("vacío");
-      if (!confirm("Esto reemplaza todos los datos actuales. ¿Seguir?")) return;
-      let nombre = nuevo.usuarios[nuevo.actual] ? nuevo.actual : Object.keys(nuevo.usuarios)[0];
+      if (!confirm("Esto reemplaza todos tus datos actuales, también los de la nube. ¿Seguir?")) return;
+      let origen = nuevo.usuarios[nuevo.actual] || nuevo.usuarios[Object.keys(nuevo.usuarios)[0]];
+      let nombre = datos.actual;
       datos = { actual: nombre, usuarios: {} };
-      datos.usuarios[nombre] = nuevo.usuarios[nombre];
+      datos.usuarios[nombre] = origen;
       elegirUsuario(nombre);
     } catch (e) {
       alert("El archivo no es un respaldo válido.");
@@ -1253,7 +1619,119 @@ function aplicarReferencias() {
   dibujarHistorial();
 }
 
+// ---------- Anotar por unidad ----------
+// Pesos aproximados de una unidad. Se pueden cambiar con "Cambiar" y el cambio se guarda en tu cuenta.
+const pesosUnidad = {
+  "Huevo entero (cocido)": ["huevo", 50], "Huevo entero (crudo)": ["huevo", 50],
+  "Clara de huevo": ["clara", 33], "Yema de huevo": ["yema", 17],
+  "Banana / plátano": ["banana", 120], "Manzana con piel": ["manzana", 180], "Naranja fresca": ["naranja", 150],
+  "Pera": ["pera", 170], "Durazno": ["durazno", 150], "Ciruela": ["ciruela", 65], "Kiwi": ["kiwi", 75], "Mandarina": ["mandarina", 85],
+  "Tomate": ["tomate", 120], "Zanahoria cruda": ["zanahoria", 70], "Cebolla": ["cebolla", 110],
+  "Papa (cocida)": ["papa", 170], "Pimiento rojo/verde": ["pimiento", 120],
+  "Pan francés / miñón": ["miñón", 40], "Pan de hamburguesa": ["pan", 60], "Pan de pita": ["pan", 60],
+  "Bagel": ["bagel", 90], "Croissant": ["croissant", 60], "Medialuna dulce": ["medialuna", 50],
+  "Pan blanco de molde": ["rebanada", 25], "Tortilla de trigo": ["tortilla", 45], "Tortilla de maíz": ["tortilla", 25],
+  "Galletas de arroz": ["galleta", 9],
+  "Empanada de carne al horno": ["empanada", 90], "Empanada de pollo al horno": ["empanada", 90],
+  "Pizza de muzzarella": ["porción", 110], "Salchicha tipo viena": ["salchicha", 40], "Jamón cocido extra": ["feta", 15],
+  "Leche entera de vaca": ["vaso", 250], "Leche descremada": ["vaso", 250], "Leche semidescremada": ["vaso", 250],
+  "Leche sin lactosa entera": ["vaso", 250],
+  "Aceite de oliva extra": ["cucharada", 14], "Aceite de girasol": ["cucharada", 14],
+  "Mantequilla de maní": ["cucharada", 16], "Miel de abejas pura": ["cucharada", 21],
+  "Azúcar blanco": ["cucharadita", 4], "Dulce de leche": ["cucharada", 20], "Mermelada": ["cucharada", 20]
+};
+
+// Cuánto pesa una unidad de un alimento: primero lo que cargaste vos, después el valor aproximado de la lista
+function unidadDe(nombre) {
+  if (!usuario) return null;
+  let mio = (misAlimentos || []).find(function (m) { return m.nombre === nombre; });
+  if (mio) return mio.unidad && mio.unidad.gramos > 0 ? mio.unidad : null;
+  if (nombre.indexOf("Plato: ") === 0) {
+    let p = (platos || []).find(function (x) { return "Plato: " + x.nombre === nombre; });
+    return p && p.porciones > 0 ? { nombre: "porción", gramos: p.gramos / p.porciones } : null;
+  }
+  for (let u of usuario.unidades || []) if (u.alimento === nombre) return { nombre: u.nombre, gramos: u.gramos };
+  let d = pesosUnidad[nombre];
+  return d ? { nombre: d[0], gramos: d[1] } : null;
+}
+
+function fijarUnidad(alimento, nombreU, gramos) {
+  let mio = misAlimentos.find(function (m) { return m.nombre === alimento; });
+  if (mio) {
+    mio.unidad = { nombre: nombreU, gramos: gramos };
+  } else if (alimento.indexOf("Plato: ") === 0) {
+    let p = platos.find(function (x) { return "Plato: " + x.nombre === alimento; });
+    if (p) p.porciones = p.gramos / gramos;
+  } else {
+    let existente = usuario.unidades.find(function (u) { return u.alimento === alimento; });
+    if (existente) { existente.nombre = nombreU; existente.gramos = gramos; }
+    else usuario.unidades.push({ alimento: alimento, nombre: nombreU, gramos: gramos });
+  }
+  guardarTodo();
+}
+
+// "sufijo" es "Comida" o "Ingrediente": son los dos lugares donde se anotan cantidades
+function refrescarUnidad(sufijo) {
+  let item = buscarItem(document.getElementById("buscar" + sufijo).value);
+  let u = item ? unidadDe(item.nombre) : null;
+  let sel = document.getElementById("unidad" + sufijo);
+  sel.options[1].textContent = u ? u.nombre + " (" + formato(u.gramos) + " g)" : "unidades";
+  let enUnidades = sel.value === "u";
+  document.getElementById("gramos" + sufijo).placeholder = enUnidades ? "Cantidad" : "Gramos";
+  let nota = document.getElementById("notaUnidad" + sufijo);
+  if (!enUnidades) { nota.innerHTML = ""; return; }
+  if (!item) {
+    nota.textContent = "Elegí un alimento y escribí la cantidad (por ejemplo 2 huevos).";
+  } else if (!u) {
+    nota.innerHTML = "No sé cuánto pesa una unidad de este alimento. Al agregarlo te lo pregunto, o <button class=\"enlace\" onclick=\"cambiarPesoUnidad('" + sufijo + "')\">cargalo ahora</button>.";
+  } else {
+    nota.innerHTML = "1 " + limpiar(u.nombre) + " = " + formato(u.gramos) + " g (aproximado). <button class=\"enlace\" onclick=\"cambiarPesoUnidad('" + sufijo + "')\">Cambiar</button>";
+  }
+}
+
+function cambiarPesoUnidad(sufijo) {
+  let item = buscarItem(document.getElementById("buscar" + sufijo).value);
+  if (!item) { alert("Elegí primero un alimento."); return null; }
+  let actual = unidadDe(item.nombre);
+  let nombreU = actual ? actual.nombre : "unidad";
+  let texto = prompt("¿Cuánto pesa 1 " + nombreU + " de \"" + item.nombre + "\" (en gramos)?", actual ? String(Math.round(actual.gramos * 10) / 10) : "");
+  if (texto === null) return null;
+  let g = numero(texto);
+  if (isNaN(g) || g <= 0) { alert("Escribí un número de gramos mayor que 0."); return null; }
+  fijarUnidad(item.nombre, nombreU, g);
+  refrescarUnidad(sufijo);
+  return { nombre: nombreU, gramos: g };
+}
+
+// Devuelve los gramos de lo que escribiste (en gramos o en unidades). Si falta algo, avisa y devuelve null.
+function leerCantidad(sufijo, item) {
+  let valor = numero(document.getElementById("gramos" + sufijo).value);
+  let enUnidades = document.getElementById("unidad" + sufijo).value === "u";
+  if (isNaN(valor) || valor <= 0) { alert(enUnidades ? "Escribí la cantidad." : "Escribí los gramos."); return null; }
+  if (!enUnidades) return { gramos: valor };
+  let u = unidadDe(item.nombre);
+  if (!u) { u = cambiarPesoUnidad(sufijo); if (!u) return null; }
+  return { gramos: valor * u.gramos, cantidad: valor, unidad: u.nombre };
+}
+
+// Si cambiás el nombre de un alimento o plato, favoritos y pesos de unidad lo siguen
+function renombrarReferencias(viejo, nuevo) {
+  if (viejo === nuevo) return;
+  favoritos.forEach(function (n, i) { if (n === viejo) favoritos[i] = nuevo; });
+  usuario.unidades.forEach(function (u) { if (u.alimento === viejo) u.alimento = nuevo; });
+}
+
+function redondear2(x) { return Math.round(x * 100) / 100; }
+
 // ---------- Mis alimentos ----------
+function limpiarFormAlimento() {
+  for (let id of ["Nombre", "Kcal", "Prot", "Carb", "Grasa", "Fibra", "UnidadG"]) document.getElementById("nuevo" + id).value = "";
+  document.getElementById("nuevoBase").value = 100;
+  document.getElementById("tituloAlimentos").textContent = "Mis alimentos";
+  document.getElementById("btnGuardarAlimento").textContent = "Guardar alimento";
+  document.getElementById("btnCancelarAlimento").className = "oculto";
+}
+
 function guardarAlimento() {
   let nombre = document.getElementById("nuevoNombre").value.trim();
   let base = numero(document.getElementById("nuevoBase").value);
@@ -1262,8 +1740,11 @@ function guardarAlimento() {
   let grasa = numero(document.getElementById("nuevoGrasa").value);
   let kcal = numero(document.getElementById("nuevoKcal").value);
   let fibra = numero(document.getElementById("nuevoFibra").value);
+  let gUnidad = numero(document.getElementById("nuevoUnidadG").value);
+  let actualItem = editandoAlimento !== null ? misAlimentos[editandoAlimento] : null;
   if (nombre === "") { alert("Escribí el nombre del alimento."); return; }
-  if (buscarItem(nombre)) { alert("Ya existe un alimento o plato con ese nombre. Usá otro nombre."); return; }
+  let igual = buscarItem(nombre);
+  if (igual && !(actualItem && igual.nombre === actualItem.nombre)) { alert("Ya existe un alimento o plato con ese nombre. Usá otro nombre."); return; }
   if (isNaN(base) || base <= 0) { alert("Escribí para cuántos gramos son los valores (por ejemplo 100 o el peso de la porción)."); return; }
   if (isNaN(prot) || isNaN(carb) || isNaN(grasa)) { alert("Completá proteínas, carbohidratos y grasas (si no tiene, poné 0)."); return; }
   if (isNaN(kcal)) kcal = prot * 4 + carb * 4 + grasa * 9;
@@ -1272,16 +1753,51 @@ function guardarAlimento() {
   if (prot + carb + grasa + fibra > base) { alert("Los macros no pueden pesar más que el alimento (" + formato(base) + " g). Revisá los valores."); return; }
   // Se guarda por 100 g (así lo usa el resto del programa) y los gramos de referencia para mostrarlo como lo cargaste
   let f = 100 / base;
-  misAlimentos.push({ nombre: nombre, base: base, kcal: kcal * f, prot: prot * f, carb: carb * f, grasa: grasa * f, fibra: fibra * f });
+  let nuevo = { nombre: nombre, base: base, kcal: kcal * f, prot: prot * f, carb: carb * f, grasa: grasa * f, fibra: fibra * f };
+  if (!isNaN(gUnidad) && gUnidad > 0) {
+    nuevo.unidad = { nombre: actualItem && actualItem.unidad ? actualItem.unidad.nombre : "unidad", gramos: gUnidad };
+  }
+  if (actualItem) {
+    renombrarReferencias(actualItem.nombre, nombre);
+    misAlimentos[editandoAlimento] = nuevo;
+  } else {
+    misAlimentos.push(nuevo);
+  }
+  editandoAlimento = null;
   guardarTodo();
-  for (let id of ["Nombre", "Kcal", "Prot", "Carb", "Grasa", "Fibra"]) document.getElementById("nuevo" + id).value = "";
-  document.getElementById("nuevoBase").value = 100;
+  limpiarFormAlimento();
   dibujarMisAlimentos();
   dibujarLista();
+  dibujarFavoritos();
+}
+
+function editarAlimento(i) {
+  let m = misAlimentos[i];
+  let f = (m.base || 100) / 100;
+  editandoAlimento = i;
+  document.getElementById("nuevoNombre").value = m.nombre;
+  document.getElementById("nuevoBase").value = m.base || 100;
+  document.getElementById("nuevoKcal").value = redondear2(m.kcal * f);
+  document.getElementById("nuevoProt").value = redondear2(m.prot * f);
+  document.getElementById("nuevoCarb").value = redondear2(m.carb * f);
+  document.getElementById("nuevoGrasa").value = redondear2(m.grasa * f);
+  document.getElementById("nuevoFibra").value = redondear2(m.fibra * f);
+  document.getElementById("nuevoUnidadG").value = m.unidad ? redondear2(m.unidad.gramos) : "";
+  document.getElementById("tituloAlimentos").textContent = "Editar alimento";
+  document.getElementById("btnGuardarAlimento").textContent = "Guardar cambios";
+  document.getElementById("btnCancelarAlimento").className = "";
+  document.getElementById("tarjetaAlimentos").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelarEdicionAlimento() {
+  editandoAlimento = null;
+  limpiarFormAlimento();
 }
 
 function borrarAlimento(i) {
   if (!confirm("¿Borrar \"" + misAlimentos[i].nombre + "\" de Mis alimentos? Lo que ya anotaste en tus días no cambia.")) return;
+  if (editandoAlimento === i) cancelarEdicionAlimento();
+  else if (editandoAlimento !== null && editandoAlimento > i) editandoAlimento--;
   misAlimentos.splice(i, 1);
   guardarTodo();
   dibujarMisAlimentos();
@@ -1296,7 +1812,8 @@ function dibujarMisAlimentos() {
     let base = m.base || 100;
     let f = base / 100;
     html += "<tr><td>" + limpiar(m.nombre) + "</td><td>" + formato(base) + "</td><td>" + formato(m.kcal * f) + "</td><td>" + formato(m.prot * f) + "</td><td>" + formato(m.carb * f) +
-      "</td><td>" + formato(m.grasa * f) + "</td><td>" + formato(m.fibra * f) + '</td><td><button class="borrar" title="Borrar" onclick="borrarAlimento(' + i + ')">×</button></td></tr>';
+      "</td><td>" + formato(m.grasa * f) + "</td><td>" + formato(m.fibra * f) + '</td><td><button class="borrar" title="Editar" onclick="editarAlimento(' + i + ')">✎</button>' +
+      '<button class="borrar" title="Borrar" onclick="borrarAlimento(' + i + ')">×</button></td></tr>';
   });
   caja.innerHTML = html + "</table>";
 }
@@ -1360,21 +1877,23 @@ function dibujarResumen() {
 // ---------- Comidas del día (separadas por tipo) ----------
 function agregarComida() {
   let item = buscarItem(document.getElementById("buscarComida").value);
-  let gramos = numero(document.getElementById("gramosComida").value);
   if (!item) { alert("Elegí un alimento o plato de la lista. Si no está, cargalo en Mis alimentos."); return; }
-  if (isNaN(gramos) || gramos <= 0) { alert("Escribí los gramos."); return; }
+  let cant = leerCantidad("Comida", item);
+  if (!cant) return;
 
   let fecha = document.getElementById("fecha").value;
   if (!dias[fecha]) dias[fecha] = [];
-  let comida = calcular(item, gramos);
+  let comida = calcular(item, cant.gramos);
   comida.nombre = item.nombre;
-  comida.gramos = gramos;
+  comida.gramos = cant.gramos;
+  if (cant.cantidad) { comida.cantidad = cant.cantidad; comida.unidad = cant.unidad; }
   comida.tipo = document.getElementById("tipoComida").value;
   dias[fecha].push(comida);
   guardarTodo();
 
   document.getElementById("buscarComida").value = "";
   document.getElementById("gramosComida").value = "";
+  refrescarUnidad("Comida");
   dibujarTodo();
 }
 
@@ -1391,6 +1910,8 @@ function editarGramos(i, texto) {
     let factor = nuevo / comida.gramos;
     for (let m of macros) comida[m.clave] *= factor;
     comida.gramos = nuevo;
+    delete comida.cantidad;
+    delete comida.unidad;
     guardarTodo();
   }
   dibujarTodo();
@@ -1419,6 +1940,7 @@ function guardarFavorito() {
 
 function usarFavorito(i) {
   document.getElementById("buscarComida").value = favoritos[i];
+  refrescarUnidad("Comida");
   document.getElementById("gramosComida").focus();
 }
 
@@ -1500,17 +2022,19 @@ function dibujarHistorial() {
 // ---------- Crear platos ----------
 function agregarIngrediente() {
   let item = buscarItem(document.getElementById("buscarIngrediente").value);
-  let gramos = numero(document.getElementById("gramosIngrediente").value);
   if (!item) { alert("Elegí un ingrediente de la lista."); return; }
-  if (isNaN(gramos) || gramos <= 0) { alert("Escribí los gramos."); return; }
+  let cant = leerCantidad("Ingrediente", item);
+  if (!cant) return;
 
-  let ingrediente = calcular(item, gramos);
+  let ingrediente = calcular(item, cant.gramos);
   ingrediente.nombre = item.nombre;
-  ingrediente.gramos = gramos;
+  ingrediente.gramos = cant.gramos;
+  if (cant.cantidad) { ingrediente.cantidad = cant.cantidad; ingrediente.unidad = cant.unidad; }
   ingredientes.push(ingrediente);
 
   document.getElementById("buscarIngrediente").value = "";
   document.getElementById("gramosIngrediente").value = "";
+  refrescarUnidad("Ingrediente");
   dibujarIngredientes();
 }
 
@@ -1523,32 +2047,86 @@ function dibujarIngredientes() {
   document.getElementById("tablaIngredientes").innerHTML = tabla(ingredientes, "quitarIngrediente", "", "Total");
 }
 
+function limpiarFormPlato() {
+  for (let id of ["nombrePlato", "pesoFinal", "porcionesPlato"]) document.getElementById(id).value = "";
+  document.getElementById("tituloPlato").textContent = "Crear un plato";
+  document.getElementById("btnGuardarPlato").textContent = "Guardar plato";
+  document.getElementById("btnCancelarPlato").className = "oculto";
+  document.getElementById("notaEdicionPlato").className = "nota oculto";
+}
+
+function cancelarEdicionPlato() {
+  editandoPlato = null;
+  ingredientes = [];
+  limpiarFormPlato();
+  dibujarIngredientes();
+}
+
 function guardarPlato() {
   let nombre = document.getElementById("nombrePlato").value.trim();
   if (nombre === "") { alert("Ponele un nombre al plato."); return; }
-  if (ingredientes.length === 0) { alert("Agregá al menos un ingrediente."); return; }
+  let p0 = editandoPlato !== null ? platos[editandoPlato] : null;
+  let igual = buscarItem("Plato: " + nombre);
+  if (igual && !(p0 && igual.nombre === "Plato: " + p0.nombre)) { alert("Ya tenés un plato con ese nombre. Usá otro."); return; }
 
-  let total = sumar(ingredientes);
-  let gramosTotales = 0;
-  for (let i of ingredientes) gramosTotales += i.gramos;
   let pesoFinal = numero(document.getElementById("pesoFinal").value);
-  if (!isNaN(pesoFinal) && pesoFinal > 0) gramosTotales = pesoFinal;
+  let porciones = numero(document.getElementById("porcionesPlato").value);
+  let pesoManual = !isNaN(pesoFinal) && pesoFinal > 0 ? pesoFinal : 0;
+  if (isNaN(porciones) || porciones <= 0) porciones = 0;
 
-  let por100 = {};
-  for (let m of macros) por100[m.clave] = total[m.clave] / gramosTotales * 100;
+  let nuevo;
+  if (p0 && !p0.ingredientes && ingredientes.length === 0) {
+    // Plato creado antes de poder editar ingredientes: solo cambian el nombre, el peso final y las porciones
+    let gramos = pesoManual || p0.gramos;
+    let por100 = {};
+    for (let m of macros) por100[m.clave] = p0.por100[m.clave] * p0.gramos / gramos;
+    nuevo = { nombre: nombre, gramos: gramos, kcal: p0.kcal, por100: por100, porciones: porciones };
+  } else {
+    if (ingredientes.length === 0) { alert("Agregá al menos un ingrediente."); return; }
+    let total = sumar(ingredientes);
+    let gramosTotales = 0;
+    for (let i of ingredientes) gramosTotales += i.gramos;
+    if (pesoManual) gramosTotales = pesoManual;
+    let por100 = {};
+    for (let m of macros) por100[m.clave] = total[m.clave] / gramosTotales * 100;
+    nuevo = {
+      nombre: nombre, gramos: gramosTotales, kcal: total.kcal, por100: por100,
+      porciones: porciones, pesoManual: pesoManual,
+      ingredientes: ingredientes.map(function (x) { return Object.assign({}, x); })
+    };
+  }
 
-  platos.push({ nombre: nombre, gramos: gramosTotales, kcal: total.kcal, por100: por100 });
+  if (p0) {
+    renombrarReferencias("Plato: " + p0.nombre, "Plato: " + nombre);
+    platos[editandoPlato] = nuevo;
+  } else {
+    platos.push(nuevo);
+  }
   guardarTodo();
-
-  ingredientes = [];
-  document.getElementById("nombrePlato").value = "";
-  document.getElementById("pesoFinal").value = "";
-  dibujarIngredientes();
+  cancelarEdicionPlato();
   dibujarPlatos();
   dibujarLista();
+  dibujarFavoritos();
+}
+
+function editarPlato(i) {
+  let p = platos[i];
+  editandoPlato = i;
+  ingredientes = (p.ingredientes || []).map(function (x) { return Object.assign({}, x); });
+  document.getElementById("nombrePlato").value = p.nombre;
+  document.getElementById("pesoFinal").value = p.ingredientes ? (p.pesoManual || "") : redondear2(p.gramos);
+  document.getElementById("porcionesPlato").value = p.porciones ? redondear2(p.porciones) : "";
+  document.getElementById("tituloPlato").textContent = "Editar plato";
+  document.getElementById("btnGuardarPlato").textContent = "Guardar cambios";
+  document.getElementById("btnCancelarPlato").className = "";
+  document.getElementById("notaEdicionPlato").className = p.ingredientes ? "nota oculto" : "nota";
+  dibujarIngredientes();
+  document.getElementById("tarjetaPlato").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function borrarPlato(i) {
+  if (editandoPlato === i) cancelarEdicionPlato();
+  else if (editandoPlato !== null && editandoPlato > i) editandoPlato--;
   platos.splice(i, 1);
   guardarTodo();
   dibujarPlatos();
@@ -1562,8 +2140,10 @@ function dibujarPlatos() {
   }
   let html = "";
   platos.forEach(function (p, i) {
+    let porciones = p.porciones > 0 ? ", " + formato(p.porciones) + " porciones" : "";
     html += '<div class="plato"><div>' + limpiar(p.nombre) + ' <span>(' + formato(p.gramos) + " g, " + formato(p.kcal) +
-      ' kcal en total)</span></div><button class="borrar" title="Borrar plato" onclick="borrarPlato(' + i + ')">×</button></div>';
+      ' kcal en total' + porciones + ')</span></div><div><button class="borrar" title="Editar plato" onclick="editarPlato(' + i + ')">✎</button>' +
+      '<button class="borrar" title="Borrar plato" onclick="borrarPlato(' + i + ')">×</button></div></div>';
   });
   document.getElementById("listaPlatos").innerHTML = html;
 }
@@ -1573,6 +2153,8 @@ function dibujarLista() {
   let html = "";
   for (let i of todosLosItems()) html += '<option value="' + limpiar(i.nombre) + '">';
   document.getElementById("listaAlimentos").innerHTML = html;
+  refrescarUnidad("Comida");
+  refrescarUnidad("Ingrediente");
 }
 
 function dibujarTodo() {
@@ -1582,11 +2164,31 @@ function dibujarTodo() {
 }
 
 document.getElementById("fecha").value = textoFecha(new Date());
-// Quien ya tenía cuenta ya conoce la app: no se le muestra la guía.
-if (hayCuenta()) marcarGuiaVista();
-viendoGuia = !guiaVista();
 dibujarGuia();
-if (hayCuenta()) elegirUsuario(datos.actual); else mostrarPantalla();
+mostrarPantalla();
+
+if (!auth) {
+  cargando = false;
+  viendoGuia = !guiaVista();
+  dibujarGuia();
+  mostrarPantalla();
+  errorLogin(sinServicio);
+} else {
+  auth.onAuthStateChanged(function (user) {
+    if (user) entrarConUsuario(user); else quitarSesion();
+  });
+}
+
+// Al volver a la app (por ejemplo desde el celular) se mira si hay cambios hechos en otro dispositivo
+document.addEventListener("visibilitychange", function () {
+  if (!uid || cargando) return;
+  if (document.visibilityState === "hidden") { if (hayPendiente()) subirNube(); return; }
+  if (Date.now() - ultimaSync < 20000) return;
+  ultimaSync = Date.now();
+  sincronizarNube(false);
+});
+window.addEventListener("online", function () { if (hayPendiente()) programarNube(500); });
+window.addEventListener("pagehide", function () { if (hayPendiente()) subirNube(); });
 </script>
 </body>
 </html>
